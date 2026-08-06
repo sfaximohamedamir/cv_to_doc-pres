@@ -14,7 +14,7 @@
  *  - Footer (sticky en bas)
  */
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Sparkles,
@@ -45,6 +45,7 @@ import { FormatSelector } from '@/components/cv/format-selector'
 import { ProcessingSteps } from '@/components/cv/processing-steps'
 import { ResultPanel } from '@/components/cv/result-panel'
 import { HistoryList } from '@/components/cv/history-list'
+import { toast } from 'sonner'
 import { StatsDashboard } from '@/components/cv/stats-dashboard'
 import { SampleSelector } from '@/components/cv/sample-selector'
 import { useCvProcessing } from '@/hooks/use-cv-processing'
@@ -100,14 +101,36 @@ export default function Home() {
   const { items, loading: historyLoading, refresh, remove } = useCvHistory()
   const { refresh: refreshStats } = useCvStats()
 
+  // Toast : succès du traitement (quand result passe à 'done')
+  useEffect(() => {
+    if (result && result.status === 'done') {
+      const scoreText = result.score ? ` — Score : ${result.score.overallScore}/100` : ''
+      toast.success('CV traité avec succès !', {
+        description: `Document ${result.outputFormat === 'word' ? 'Word' : 'PowerPoint'} généré${scoreText}`,
+      })
+    }
+  }, [result])
+
+  // Toast : erreur de traitement
+  useEffect(() => {
+    if (error) {
+      toast.error('Erreur lors du traitement', {
+        description: error,
+      })
+    }
+  }, [error])
+
   const handleProcess = useCallback(async () => {
     if (!file) return
     const lang = language === 'auto' ? undefined : language
+    toast.info('Traitement en cours…', {
+      description: `Analyse de "${file.name}" avec NVIDIA Nemotron`,
+    })
     await processCv({ file, outputFormat, language: lang })
     // Rafraîchir l'historique et les stats après le traitement
     refresh()
     refreshStats()
-  }, [file, outputFormat, language, processCv, refresh, refreshStats])
+  }, [file, outputFormat, language, processCv, refresh, refreshStats, toast])
 
   const handleReset = useCallback(() => {
     reset()
@@ -124,6 +147,10 @@ export default function Home() {
       // Rafraîchir l'historique et les stats
       refresh()
       refreshStats()
+      const scoreText = sampleResult.score ? ` — Score : ${sampleResult.score.overallScore}/100` : ''
+      toast.success('CV d\'exemple généré !', {
+        description: `Document ${sampleResult.outputFormat === 'word' ? 'Word' : 'PowerPoint'} créé${scoreText}`,
+      })
     },
     [reset, refresh, refreshStats]
   )
@@ -133,6 +160,9 @@ export default function Home() {
     reset()
     setViewedHistory(null)
     setSelectedHistoryId(null)
+    toast.info('Prêt pour un nouveau traitement', {
+      description: 'Téléversez un nouveau CV ou choisissez un exemple',
+    })
     // Faire défiler vers le haut
     if (typeof window !== 'undefined') {
       window.scrollTo({ top: 0, behavior: 'smooth' })
@@ -162,6 +192,9 @@ export default function Home() {
       })
     } catch {
       setViewedHistory(null)
+      toast.error('Impossible de charger ce CV', {
+        description: 'Le CV sélectionné n\'a pas pu être récupéré.',
+      })
     } finally {
       setLoadingHistory(false)
     }
@@ -169,11 +202,24 @@ export default function Home() {
 
   const handleRemove = useCallback(
     async (id: string) => {
-      await remove(id)
-      refreshStats()
-      if (selectedHistoryId === id) {
-        setSelectedHistoryId(null)
-        setViewedHistory(null)
+      const promise = fetch(`/api/cv/history/${id}`, { method: 'DELETE' }).then(async (res) => {
+        if (!res.ok) throw new Error(`Erreur ${res.status}`)
+      })
+      toast.promise(promise, {
+        loading: 'Suppression en cours…',
+        success: 'CV supprimé de l\'historique',
+        error: 'Erreur lors de la suppression',
+      })
+      try {
+        await promise
+        await remove(id)
+        refreshStats()
+        if (selectedHistoryId === id) {
+          setSelectedHistoryId(null)
+          setViewedHistory(null)
+        }
+      } catch {
+        /* le toast gère l'erreur */
       }
     },
     [remove, refreshStats, selectedHistoryId]

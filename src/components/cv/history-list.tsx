@@ -3,8 +3,10 @@
 /**
  * Liste de l'historique des CV traités.
  * Permet de recharger un résultat précédent ou de supprimer une entrée.
+ * Inclut recherche textuelle, filtres par format/score et tri.
  */
 
+import { useMemo, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   History,
@@ -18,11 +20,22 @@ import {
   Loader2,
   RefreshCw,
   FileWarning,
+  Search,
+  Filter,
+  X,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { Input } from '@/components/ui/input'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 import type { HistoryItem } from '@/hooks/use-cv-history'
 
@@ -57,6 +70,10 @@ function getScoreColor(score: number): string {
   return 'text-red-600 dark:text-red-400'
 }
 
+type FormatFilter = 'all' | 'word' | 'powerpoint'
+type ScoreFilter = 'all' | 'excellent' | 'verygood' | 'correct' | 'poor'
+type SortBy = 'recent' | 'oldest' | 'best' | 'worst'
+
 export function HistoryList({
   items,
   loading,
@@ -65,6 +82,92 @@ export function HistoryList({
   onRemove,
   selectedId,
 }: HistoryListProps) {
+  // États des filtres et de la recherche
+  const [searchQuery, setSearchQuery] = useState('')
+  const [formatFilter, setFormatFilter] = useState<FormatFilter>('all')
+  const [scoreFilter, setScoreFilter] = useState<ScoreFilter>('all')
+  const [sortBy, setSortBy] = useState<SortBy>('recent')
+
+  // Calcul mémoïsé de la liste filtrée et triée
+  const filteredItems = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase()
+
+    // 1. Filtrage par recherche textuelle (sur originalName)
+    let result = items
+    if (query) {
+      result = result.filter((item) =>
+        item.originalName.toLowerCase().includes(query)
+      )
+    }
+
+    // 2. Filtrage par format de sortie
+    if (formatFilter !== 'all') {
+      result = result.filter((item) => item.outputFormat === formatFilter)
+    }
+
+    // 3. Filtrage par score
+    if (scoreFilter !== 'all') {
+      result = result.filter((item) => {
+        if (item.score === null) return false
+        switch (scoreFilter) {
+          case 'excellent':
+            return item.score >= 85
+          case 'verygood':
+            return item.score >= 70 && item.score < 85
+          case 'correct':
+            return item.score >= 55 && item.score < 70
+          case 'poor':
+            return item.score < 55
+          default:
+            return true
+        }
+      })
+    }
+
+    // 4. Tri
+    const sorted = [...result]
+    sorted.sort((a, b) => {
+      switch (sortBy) {
+        case 'recent':
+          return (
+            new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+          )
+        case 'oldest':
+          return (
+            new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+          )
+        case 'best': {
+          const sa = a.score ?? -1
+          const sb = b.score ?? -1
+          return sb - sa
+        }
+        case 'worst': {
+          const sa = a.score ?? Number.MAX_SAFE_INTEGER
+          const sb = b.score ?? Number.MAX_SAFE_INTEGER
+          return sa - sb
+        }
+        default:
+          return 0
+      }
+    })
+
+    return sorted
+  }, [items, searchQuery, formatFilter, scoreFilter, sortBy])
+
+  // Indique si au moins un filtre est actif
+  const filtersActive =
+    searchQuery.trim() !== '' ||
+    formatFilter !== 'all' ||
+    scoreFilter !== 'all' ||
+    sortBy !== 'recent'
+
+  const resetFilters = () => {
+    setSearchQuery('')
+    setFormatFilter('all')
+    setScoreFilter('all')
+    setSortBy('recent')
+  }
+
   return (
     <Card className="flex h-full flex-col">
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
@@ -76,6 +179,15 @@ export function HistoryList({
               {items.length}
             </Badge>
           )}
+          {filtersActive &&
+            filteredItems.length < items.length && (
+              <Badge
+                variant="outline"
+                className="ml-1 gap-1 text-xs font-normal text-muted-foreground"
+              >
+                {filteredItems.length}/{items.length}
+              </Badge>
+            )}
         </CardTitle>
         <Button
           variant="ghost"
@@ -92,6 +204,83 @@ export function HistoryList({
           )}
         </Button>
       </CardHeader>
+
+      {/* Barre de filtres et de recherche — visible uniquement si des items existent */}
+      {items.length > 0 && (
+        <div className="space-y-2 border-b p-3">
+          {/* Champ de recherche textuelle */}
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Rechercher..."
+              className="h-8 pl-8 pr-8 text-sm"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery('')}
+                className="absolute right-2 top-1/2 flex h-4 w-4 -translate-y-1/2 items-center justify-center rounded text-muted-foreground hover:text-foreground"
+                title="Effacer la recherche"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+
+          {/* Ligne de filtres : format, score, tri */}
+          <div className="flex flex-wrap gap-2">
+            <Select
+              value={formatFilter}
+              onValueChange={(v) => setFormatFilter(v as FormatFilter)}
+            >
+              <SelectTrigger size="sm" className="h-8 flex-1 text-xs">
+                <SelectValue placeholder="Format" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Tous</SelectItem>
+                <SelectItem value="word">Word</SelectItem>
+                <SelectItem value="powerpoint">PowerPoint</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <Select
+              value={scoreFilter}
+              onValueChange={(v) => setScoreFilter(v as ScoreFilter)}
+            >
+              <SelectTrigger size="sm" className="h-8 flex-1 text-xs">
+                <SelectValue placeholder="Score" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Tous scores</SelectItem>
+                <SelectItem value="excellent">Excellent (85+)</SelectItem>
+                <SelectItem value="verygood">Très bon (70+)</SelectItem>
+                <SelectItem value="correct">Correct (55+)</SelectItem>
+                <SelectItem value="poor">À améliorer (&lt;55)</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <Select
+              value={sortBy}
+              onValueChange={(v) => setSortBy(v as SortBy)}
+            >
+              <SelectTrigger size="sm" className="h-8 flex-1 text-xs">
+                <Filter className="h-3 w-3 text-muted-foreground" />
+                <SelectValue placeholder="Tri" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="recent">Plus récents</SelectItem>
+                <SelectItem value="oldest">Plus anciens</SelectItem>
+                <SelectItem value="best">Meilleur score</SelectItem>
+                <SelectItem value="worst">Pire score</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+      )}
+
       <CardContent className="flex-1 p-0">
         {items.length === 0 ? (
           <div className="flex h-40 flex-col items-center justify-center gap-2 px-4 text-center">
@@ -103,11 +292,27 @@ export function HistoryList({
               Vos traitements apparaîtront ici.
             </p>
           </div>
+        ) : filteredItems.length === 0 ? (
+          // État vide : items présents mais aucun ne correspond aux filtres
+          <div className="flex h-40 flex-col items-center justify-center gap-2 px-4 text-center">
+            <Filter className="h-8 w-8 text-muted-foreground/40" />
+            <p className="text-sm text-muted-foreground">
+              Aucun CV ne correspond à vos critères.
+            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              className="mt-1 h-7 text-xs"
+              onClick={resetFilters}
+            >
+              Réinitialiser les filtres
+            </Button>
+          </div>
         ) : (
           <ScrollArea className="h-[calc(100vh-280px)] min-h-[300px] px-3">
             <div className="space-y-2 pb-3">
               <AnimatePresence initial={false}>
-                {items.map((item) => {
+                {filteredItems.map((item) => {
                   const isPdf = item.sourceType === 'application/pdf'
                   const isError = item.status === 'error'
                   return (

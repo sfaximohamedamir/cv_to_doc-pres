@@ -504,3 +504,145 @@ Task: QA, améliorations styling et nouvelles fonctionnalités
 3. **Modèles de CV** : proposer plusieurs templates visuels pour Word/PowerPoint
 4. **Recommandations personnalisées** : améliorer le scoring avec des suggestions concrètes par champ
 5. **Notifications toast** : utiliser le toaster pour confirmer les actions (copie, export, suppression)
+
+---
+Task ID: 10-a
+Agent: Radar Chart Agent
+Task: Créer le graphique radar des scores + intégration dans ScoreDisplay
+
+Work Log:
+- Lecture du worklog, de `src/lib/cv/types.ts` (interface `ScoreCategory`) et de `src/components/cv/score-display.tsx` (état actuel)
+- Vérification que `recharts@2.15.4` et `framer-motion@^12` sont bien installés
+- Création de `src/components/cv/score-radar-chart.tsx` :
+  - Directive `'use client'`
+  - Import de `RadarChart`, `Radar`, `PolarGrid`, `PolarAngleAxis`, `PolarRadiusAxis`, `ResponsiveContainer` depuis `recharts`
+  - Props typées `categories: Array<{ name; score; comment }>`
+  - Fonction `shortenCategoryName` avec mapping des 7 catégories connues (« Clarté et structure » → « Clarté », « Impact et réalisations » → « Impact », « Expérience professionnelle » → « Expérience », « Présentation et orthographe » → « Présentation », « Adéquation au marché » → « Marché », « Compétences » et « Formation » inchangés) + fallback robuste (insensible à la casse, premier mot sinon)
+  - Transformation des données au format recharts : `[{ category, score, fullMark: 100 }, ...]`
+  - Palette emerald/teal : `#10b981` (gradient fill) + `#059669` (stroke)
+  - `PolarRadiusAxis domain={[0, 100]}` avec `tick={false}` et `axisLine={false}` pour un rendu épuré
+  - `ResponsiveContainer width="100%" height="100%"` dans un conteneur `height: 300` (uniquement autorisé pour la hauteur du graphique)
+  - Dégradé SVG `linearGradient` « radarGradient » pour un remplissage subtil
+  - Animation d'entrée via `motion.div` (fade + scale, delay 0.2s)
+  - Légende sous le graphique : « Plus la zone est large, meilleur est le score »
+  - JSDoc en français pour le composant, les props et la fonction utilitaire
+- Modification ciblée de `src/components/cv/score-display.tsx` :
+  - Ajout de l'import `ScoreRadarChart` depuis `@/components/cv/score-radar-chart`
+  - Dans la carte « Détail par catégorie », remplacement du `CardContent` par une grille responsive `grid grid-cols-1 gap-4 md:grid-cols-[45%_1fr]` :
+    - Colonne gauche (45%) : `ScoreRadarChart`
+    - Colonne droite (1fr) : les barres de progression existantes (`CategoryBar`) wrappées dans un `div` avec `space-y-5`
+  - Sur mobile : empilement vertical (radar au-dessus, barres en dessous)
+- Vérification : `bunx tsc --noEmit` — aucune erreur sur `score-radar` ou `score-display`
+- Vérification : `bun run lint` — aucune erreur ESLint
+
+Stage Summary:
+- Fichier créé : `src/components/cv/score-radar-chart.tsx` (composant radar chart réutilisable)
+- Fichier modifié : `src/components/cv/score-display.tsx` (intégration dans la carte « Détail par catégorie » avec layout 2 colonnes responsive)
+- Adresse le feedback VLM : « il manque un graphique radar (spider chart) pour visualiser instantanément les forces/faiblesses »
+- Palette cohérente (emerald/teal), animations Framer Motion, accessibility-friendly ( ResponsiveContainer + légende explicative)
+
+---
+Task ID: 10-b
+Agent: History Filters Agent
+Task: Ajouter filtres et recherche à la liste d'historique
+
+Work Log:
+- Lecture du fichier `src/components/cv/history-list.tsx` et du hook `src/hooks/use-cv-history.ts` (type `HistoryItem`)
+- Ajout des imports : `useMemo`, `useState` depuis React ; `Search`, `Filter`, `X` depuis lucide-react ; `Input` depuis `@/components/ui/input` ; `Select`, `SelectContent`, `SelectItem`, `SelectTrigger`, `SelectValue` depuis `@/components/ui/select`
+- Définition de 3 types unions : `FormatFilter` ('all' | 'word' | 'powerpoint'), `ScoreFilter` ('all' | 'excellent' | 'verygood' | 'correct' | 'poor'), `SortBy` ('recent' | 'oldest' | 'best' | 'worst')
+- Ajout de 4 états locaux : `searchQuery`, `formatFilter`, `scoreFilter`, `sortBy`
+- Mise en place d'un `useMemo` (`filteredItems`) qui applique successivement :
+  1. Recherche textuelle (sous-chaîne insensible à la casse sur `originalName`)
+  2. Filtre par `outputFormat`
+  3. Filtre par tranche de score (Excellent 85+, Très bon 70-84, Correct 55-69, À améliorer <55 ; les CV sans score sont exclus des filtres de score)
+  4. Tri (plus récents / plus anciens / meilleur score / pire score ; gestion des `score === null` en les placant en fin pour 'best' et en début pour 'worst')
+- Ajout d'une variable `filtersActive` et d'une fonction `resetFilters()`
+- Ajout d'une barre de filtres entre `CardHeader` et `CardContent` (div `space-y-2 border-b p-3`) :
+  - Champ de recherche `Input` avec icône `Search` à gauche, bouton `X` à droite pour effacer, placeholder "Rechercher...", taille compacte (h-8)
+  - Ligne `flex flex-wrap gap-2` avec 3 `Select` (size="sm", h-8, flex-1) :
+    - Format : Tous / Word / PowerPoint (valeur "all" pour "Tous")
+    - Score : Tous scores / Excellent (85+) / Très bon (70+) / Correct (55+) / À améliorer (<55)
+    - Tri : Plus récents / Plus anciens / Meilleur score / Pire score (avec icône `Filter` dans le trigger)
+- Ajout d'un badge "X/Y" dans le header (CardTitle) qui s'affiche uniquement lorsque des filtres sont actifs ET que le nombre filtré est inférieur au total
+- Mise à jour de l'état vide : 3 cas distincts :
+  1. Aucun item du tout → message original "Aucun CV traité pour l'instant"
+  2. Items présents mais aucun ne correspond aux filtres → icône `Filter`, message "Aucun CV ne correspond à vos critères." + bouton "Réinitialiser les filtres" (qui appelle `resetFilters`)
+  3. Sinon → ScrollArea avec la liste filtrée/triée
+- Remplacement de `items.map(...)` par `filteredItems.map(...)` dans la ScrollArea
+- Conservation du comportement existant : `onSelect`, `onRemove`, `onRefresh`, `selectedId`, animations Framer Motion, format/score/duration affichés par item, boutons télécharger/supprimer
+- Aucune couleur indigo ou bleue ajoutée dans la barre de filtres (les seules couleurs restent emerald/teal/amber/orange/red du score existant)
+- Vérification : `bunx tsc --noEmit` — aucune erreur sur `history-list`
+- Vérification : `bun run lint` — aucune erreur ESLint
+
+Stage Summary:
+- Fichier modifié : `src/components/cv/history-list.tsx` (ajout de la barre de filtres/recherche, logique useMemo, état vide conditionnel, badge de compte)
+- Adresse le feedback VLM : « L'historique n'offre pas de filtres avancés (par score, format, date) ni de recherche textuelle »
+- Filtres disponibles : recherche textuelle (originalName), format (Word/PowerPoint), score (4 tranches), tri (4 options)
+- UI compacte responsive (flex-wrap sur mobile), états vides différenciés, bouton de réinitialisation
+
+---
+Task ID: 10 (QA Round 3)
+Agent: Z.ai (review cron)
+Task: QA, radar chart, toasts, filtres historique, rapport PDF, tooltips
+
+## État du projet en début de round
+- Projet stable : lint 0 erreur, TSC 0 erreur, serveur tourne sur port 3000
+- 11 routes API fonctionnelles (8 initiales + stats + sample + export)
+- Interface avec dark mode, stats dashboard, sample selector, export JSON
+- VLM Round 2 avait recommandé : radar chart, comparateur, export PDF, tooltips, filtres historique
+
+## Objectifs de ce round
+1. Graphique radar (spider chart) pour visualiser les 7 catégories de score
+2. Notifications toast pour confirmer les actions utilisateur
+3. Filtres et recherche dans l'historique
+4. Export PDF du rapport d'audit
+5. Tooltips interactifs sur les catégories de score
+6. Fix du radar en dark mode (identifié par VLM)
+
+## Modifications réalisées
+
+### Nouvelle route API (1)
+- `GET /api/cv/report?id=<cvId>` — génère un rapport HTML imprimable (avec radar SVG inline, barres de catégories, points forts/améliorations, expérience, formation, compétences). Le bouton "Imprimer / Enregistrer en PDF" utilise window.print().
+
+### Nouveaux fichiers (2)
+- `src/components/cv/score-radar-chart.tsx` — graphique radar recharts avec couleurs adaptées au thème (useTheme)
+- `src/app/api/cv/report/route.ts` — rapport d'audit HTML imprimable avec SVG radar inline
+
+### Fichiers modifiés (6)
+- `src/app/layout.tsx` — ajout du SonnerToaster (position bottom-right, richColors, closeButton)
+- `src/app/page.tsx` — toasts sur process (info/début), succès, erreur, sample, select history, remove (promise), reprocess + useEffect pour result/error
+- `src/components/cv/result-panel.tsx` — ajout bouton "Rapport PDF" (ouvre /api/cv/report dans nouvel onglet) + import FileText
+- `src/components/cv/score-display.tsx` — intégration ScoreRadarChart dans la carte "Détail par catégorie" (grid 45%/1fr sur desktop, stacked sur mobile) + tooltips (Info icon) sur chaque catégorie
+- `src/components/cv/score-radar-chart.tsx` — fix dark mode : useTheme() pour adapter gridColor (#374151 en dark vs #e5e7eb), tickColor (#9ca3af vs #374151), radarStroke (#34d399 vs #059669), opacité du gradient
+- `src/components/cv/nvidia-status-banner.tsx` — toast.success sur copie du modèle de clé API
+- `src/components/cv/history-list.tsx` (par sous-agent) — barre de filtres : recherche textuelle + filtre format + filtre score + tri, avec état vide différencié et badge X/Y
+
+## Résultats des vérifications
+- **Lint** : 0 erreur ✅
+- **TypeScript** : 0 erreur dans src/ ✅
+- **Serveur dev** : tourne sans erreur ✅
+- **agent-browser** :
+  * Page rendue correctement, 0 erreur console
+  * Radar chart visible et bien rendu (VLM : "parfaitement visible et bien rendu")
+  * Dark mode radar fixé : VLM 8.5/10 → 9/10 après correction des couleurs
+  * Filtres historique : recherche "senior" filtre correctement à 1 résultat ✅
+  * Bouton "Rapport PDF" présent et fonctionnel (HTTP 200, 16KB HTML)
+  * Rapport PDF : VLM "très propre, professionnel, radar SVG parfaitement rendu"
+  * 3 boutons d'action : Télécharger Word, Exporter JSON, Rapport PDF ✅
+- **VLM global** : note **9/10** pour l'interface finale
+  * "hiérarchie visuelle limpide"
+  * "richesse fonctionnelle remarquable"
+  * "design épuré en mode clair"
+
+## Risques / points non résolus
+- Le rapport PDF utilise window.print() du navigateur (pas de génération PDF côté serveur). C'est volontaire pour éviter une dépendance lourde (Puppeteer/jsPDF). L'utilisateur doit faire Ctrl+P puis "Enregistrer en PDF".
+- Les toasts disparaissent après ~4s (comportement par défaut de Sonner) — pourrait être prolongé si besoin.
+- Le graphique radar utilise un `id` SVG fixe ("radarGradient") — si deux radars étaient rendus sur la même page, il y aurait un conflit d'ID. Pour l'instant un seul radar est affiché à la fois, donc pas de problème.
+
+## Priorités recommandées pour le prochain round
+1. **Comparateur de CV** : permettre de sélectionner 2 CV et comparer leurs scores côte à côte (radars superposés, tableaux de différences)
+2. **Guide interactif / onboarding** : tour guidé pour les nouveaux utilisateurs (3-4 étapes avec tooltips)
+3. **Modèles de CV** : proposer plusieurs templates visuels pour Word/PowerPoint (moderne, classique, créatif)
+4. **Statistiques avancées** : évolution du score moyen dans le temps, heatmap d'activité
+5. **Recommandations personnalisées par champ** : suggestions concrètes pour améliorer chaque section du CV
+6. **Recherche full-text dans l'historique** : chercher dans le contenu extrait (nom, entreprise, compétences) pas seulement le nom de fichier

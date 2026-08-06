@@ -9,6 +9,7 @@ import { useState, useEffect } from 'react'
 import { AlertTriangle, X, KeyRound, Copy, Check } from 'lucide-react'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
+import { toast } from 'sonner'
 
 export function NvidiaStatusBanner() {
   const [configured, setConfigured] = useState<boolean | null>(null)
@@ -27,6 +28,9 @@ export function NvidiaStatusBanner() {
   const copyEnv = () => {
     navigator.clipboard.writeText('NVIDIA_API_KEY=nvapi-xxxxxxxxxxxxxxxxxxxx')
     setCopied(true)
+    toast.success('Modèle copié !', {
+      description: 'Collez-le dans votre fichier .env.local',
+    })
     setTimeout(() => setCopied(false), 2000)
   }
 

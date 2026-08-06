@@ -16,11 +16,19 @@ import {
   Award,
   ThumbsUp,
   AlertTriangle,
+  Info,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 import type { CvScore } from '@/lib/cv/types'
+import { ScoreRadarChart } from '@/components/cv/score-radar-chart'
 
 export interface ScoreDisplayProps {
   score: CvScore
@@ -135,7 +143,19 @@ function CategoryBar({
       className="space-y-1.5"
     >
       <div className="flex items-center justify-between gap-2">
-        <span className="text-sm font-medium text-foreground">{name}</span>
+        <TooltipProvider delayDuration={200}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="flex cursor-help items-center gap-1 text-sm font-medium text-foreground">
+                {name}
+                <Info className="h-3 w-3 text-muted-foreground/60" />
+              </span>
+            </TooltipTrigger>
+            <TooltipContent side="top" className="max-w-xs">
+              <p className="text-xs leading-relaxed">{comment}</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
         <span className="text-sm font-bold tabular-nums text-foreground">{score}/100</span>
       </div>
       <div className="relative h-2 w-full overflow-hidden rounded-full bg-muted">
@@ -194,16 +214,21 @@ export function ScoreDisplay({ score }: ScoreDisplayProps) {
             Détail par catégorie
           </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-5">
-          {score.categories.map((cat, i) => (
-            <CategoryBar
-              key={cat.name}
-              name={cat.name}
-              score={cat.score}
-              comment={cat.comment}
-              delay={0.3 + i * 0.1}
-            />
-          ))}
+        <CardContent>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-[45%_1fr]">
+            <ScoreRadarChart categories={score.categories} />
+            <div className="space-y-5">
+              {score.categories.map((cat, i) => (
+                <CategoryBar
+                  key={cat.name}
+                  name={cat.name}
+                  score={cat.score}
+                  comment={cat.comment}
+                  delay={0.3 + i * 0.1}
+                />
+              ))}
+            </div>
+          </div>
         </CardContent>
       </Card>
 

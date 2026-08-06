@@ -20,6 +20,7 @@ import {
   CheckCircle2,
   FileJson,
   RefreshCw,
+  FileText,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -42,6 +43,7 @@ export function ResultPanel({ result, onReset, onReprocess }: ResultPanelProps) 
   const isWord = result.outputFormat === 'word'
   const isSample = result.extractionModel?.toLowerCase().includes('sample')
   const exportJsonUrl = `/api/cv/export?id=${encodeURIComponent(result.id)}`
+  const reportUrl = `/api/cv/report?id=${encodeURIComponent(result.id)}`
   const fileSize = result.parsedCv
     ? JSON.stringify(result.parsedCv).length
     : 0
@@ -117,6 +119,12 @@ export function ResultPanel({ result, onReset, onReprocess }: ResultPanelProps) 
               >
                 <FileJson className="h-4 w-4" />
                 Exporter JSON
+              </a>
+            </Button>
+            <Button asChild variant="outline" size="lg" className="gap-2">
+              <a href={reportUrl} target="_blank" rel="noopener noreferrer">
+                <FileText className="h-4 w-4" />
+                Rapport PDF
               </a>
             </Button>
             {onReprocess && (
