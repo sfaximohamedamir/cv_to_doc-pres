@@ -1,0 +1,377 @@
+'use client'
+
+/**
+ * Page principale de l'agent de transformation de CV.
+ *
+ * Architecture :
+ *  - Header (sticky)
+ *  - Bannière de configuration NVIDIA
+ *  - Section hero (présentation)
+ *  - Zone principale en 2 colonnes :
+ *      * Colonne gauche : upload, format, bouton, étapes, résultats
+ *      * Colonne droite : historique
+ *  - Footer (sticky en bas)
+ */
+
+import { useState, useCallback } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
+import {
+  Sparkles,
+  Wand2,
+  ArrowRight,
+  Zap,
+  FileSearch,
+  FileOutput,
+  Gauge,
+  Languages,
+} from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Label } from '@/components/ui/label'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { Header } from '@/components/layout/header'
+import { Footer } from '@/components/layout/footer'
+import { NvidiaStatusBanner } from '@/components/cv/nvidia-status-banner'
+import { UploadZone } from '@/components/cv/upload-zone'
+import { FormatSelector } from '@/components/cv/format-selector'
+import { ProcessingSteps } from '@/components/cv/processing-steps'
+import { ResultPanel } from '@/components/cv/result-panel'
+import { HistoryList } from '@/components/cv/history-list'
+import { useCvProcessing } from '@/hooks/use-cv-processing'
+import { useCvHistory } from '@/hooks/use-cv-history'
+import type { OutputFormat, CvProcessingResult } from '@/lib/cv/types'
+
+const LANGUAGES = [
+  { value: 'français', label: 'Français' },
+  { value: 'english', label: 'Anglais' },
+  { value: 'español', label: 'Espagnol' },
+  { value: 'auto', label: 'Détection automatique' },
+]
+
+const PIPELINE_FEATURES = [
+  {
+    icon: FileSearch,
+    title: '1. Extraction IA',
+    description:
+      "Le modèle Nemotron lit votre PDF ou image et structure les données du CV (nom, expérience, formation, compétences...).",
+    color: 'text-emerald-600 dark:text-emerald-400',
+    bg: 'bg-emerald-50 dark:bg-emerald-950/30',
+  },
+  {
+    icon: FileOutput,
+    title: '2. Génération',
+    description:
+      "Un document Word ou PowerPoint professionnel est généré automatiquement à partir des données structurées.",
+    color: 'text-teal-600 dark:text-teal-400',
+    bg: 'bg-teal-50 dark:bg-teal-950/30',
+  },
+  {
+    icon: Gauge,
+    title: '3. Scoring',
+    description:
+      "Le CV est évalué sur 7 critères (clarté, impact, compétences...) avec un score global sur 100 et des recommandations.",
+    color: 'text-cyan-600 dark:text-cyan-400',
+    bg: 'bg-cyan-50 dark:bg-cyan-950/30',
+  },
+]
+
+export default function Home() {
+  const [file, setFile] = useState<File | null>(null)
+  const [outputFormat, setOutputFormat] = useState<OutputFormat>('word')
+  const [language, setLanguage] = useState<string>('français')
+  const [selectedHistoryId, setSelectedHistoryId] = useState<string | null>(null)
+  const [viewedHistory, setViewedHistory] = useState<CvProcessingResult | null>(null)
+  const [loadingHistory, setLoadingHistory] = useState(false)
+
+  const { isProcessing, steps, result, error, processCv, reset } =
+    useCvProcessing()
+  const { items, loading: historyLoading, refresh, remove } = useCvHistory()
+
+  const handleProcess = useCallback(async () => {
+    if (!file) return
+    const lang = language === 'auto' ? undefined : language
+    await processCv({ file, outputFormat, language: lang })
+    // Rafraîchir l'historique après le traitement
+    refresh()
+  }, [file, outputFormat, language, processCv, refresh])
+
+  const handleReset = useCallback(() => {
+    reset()
+    setFile(null)
+    setViewedHistory(null)
+    setSelectedHistoryId(null)
+  }, [reset])
+
+  const handleSelectHistory = useCallback(async (id: string) => {
+    setSelectedHistoryId(id)
+    setLoadingHistory(true)
+    setViewedHistory(null)
+    try {
+      const res = await fetch(`/api/cv/history/${id}`)
+      if (!res.ok) throw new Error(`Erreur ${res.status}`)
+      const data = await res.json()
+      // Construire un objet CvProcessingResult à partir des données d'historique
+      setViewedHistory({
+        id: data.id,
+        status: data.status,
+        parsedCv: data.parsedCv,
+        score: data.scoreDetails,
+        outputFormat: data.outputFormat,
+        downloadUrl: data.downloadUrl || undefined,
+        outputFileName: data.outputName || undefined,
+        extractedText: data.extractedText || undefined,
+        durationMs: data.durationMs || undefined,
+        extractionModel: data.extractionModel || '',
+        scoringModel: data.scoringModel || '',
+      })
+    } catch {
+      setViewedHistory(null)
+    } finally {
+      setLoadingHistory(false)
+    }
+  }, [])
+
+  const handleRemove = useCallback(
+    async (id: string) => {
+      await remove(id)
+      if (selectedHistoryId === id) {
+        setSelectedHistoryId(null)
+        setViewedHistory(null)
+      }
+    },
+    [remove, selectedHistoryId]
+  )
+
+  // Le résultat affiché : soit le traitement courant, soit un élément d'historique consulté
+  const displayedResult = result || viewedHistory
+  const showResult = displayedResult && displayedResult.status === 'done'
+
+  return (
+    <div className="flex min-h-screen flex-col bg-background">
+      <Header />
+
+      <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-6 sm:px-6 lg:px-8">
+        {/* Bannière NVIDIA */}
+        <div className="mb-6">
+          <NvidiaStatusBanner />
+        </div>
+
+        {/* Section Hero — visible seulement avant tout résultat */}
+        {!showResult && !isProcessing && (
+          <motion.section
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-8"
+          >
+            <div className="relative overflow-hidden rounded-2xl border border-border bg-gradient-to-br from-emerald-50 via-teal-50 to-cyan-50 p-6 dark:from-emerald-950/20 dark:via-teal-950/10 dark:to-cyan-950/20 sm:p-8">
+              <div className="absolute -right-12 -top-12 h-48 w-48 rounded-full bg-emerald-500/10 blur-3xl" />
+              <div className="absolute -bottom-12 -left-12 h-48 w-48 rounded-full bg-teal-500/10 blur-3xl" />
+              <div className="relative">
+                <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-white/70 px-3 py-1 text-xs font-medium text-emerald-700 shadow-sm dark:bg-white/10 dark:text-emerald-400">
+                  <Sparkles className="h-3.5 w-3.5" />
+                  Propulsé par NVIDIA Nemotron
+                </div>
+                <h2 className="max-w-2xl text-2xl font-bold leading-tight text-foreground sm:text-3xl">
+                  Transformez votre CV en document Word ou PowerPoint et obtenez
+                  un score IA
+                </h2>
+                <p className="mt-2 max-w-2xl text-sm text-muted-foreground sm:text-base">
+                  Téléversez un CV en PDF ou image. L'agent l'extrait,
+                  le restructure, génère un document propre et l'évalue sur
+                  7 critères.
+                </p>
+
+                {/* Pipeline features */}
+                <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  {PIPELINE_FEATURES.map((f, i) => {
+                    const Icon = f.icon
+                    return (
+                      <motion.div
+                        key={i}
+                        initial={{ opacity: 0, y: 8 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: 0.1 + i * 0.1 }}
+                        className="rounded-xl border border-border bg-card/80 p-3 backdrop-blur"
+                      >
+                        <div
+                          className={`mb-2 flex h-9 w-9 items-center justify-center rounded-lg ${f.bg} ${f.color}`}
+                        >
+                          <Icon className="h-5 w-5" />
+                        </div>
+                        <p className="text-sm font-semibold text-foreground">
+                          {f.title}
+                        </p>
+                        <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
+                          {f.description}
+                        </p>
+                      </motion.div>
+                    )
+                  })}
+                </div>
+              </div>
+            </div>
+          </motion.section>
+        )}
+
+        {/* Contenu principal : 2 colonnes */}
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_360px]">
+          {/* Colonne gauche : interaction + résultats */}
+          <div className="space-y-6">
+            {/* Carte de configuration (upload + format + bouton) */}
+            {!showResult && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <Wand2 className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+                    Configuration du traitement
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-5">
+                  {/* Upload */}
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium">
+                      1. Sélectionnez votre CV
+                    </Label>
+                    <UploadZone
+                      file={file}
+                      onFileSelected={setFile}
+                      disabled={isProcessing}
+                    />
+                  </div>
+
+                  {/* Format de sortie */}
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium">
+                      2. Choisissez le format de sortie
+                    </Label>
+                    <FormatSelector
+                      value={outputFormat}
+                      onChange={setOutputFormat}
+                      disabled={isProcessing}
+                    />
+                  </div>
+
+                  {/* Langue */}
+                  <div className="space-y-2">
+                    <Label className="flex items-center gap-1.5 text-sm font-medium">
+                      <Languages className="h-3.5 w-3.5" />
+                      3. Langue du CV (optionnel)
+                    </Label>
+                    <Select
+                      value={language}
+                      onValueChange={setLanguage}
+                      disabled={isProcessing}
+                    >
+                      <SelectTrigger className="w-full sm:w-[260px]">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {LANGUAGES.map((l) => (
+                          <SelectItem key={l.value} value={l.value}>
+                            {l.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Bouton de traitement */}
+                  <Button
+                    onClick={handleProcess}
+                    disabled={!file || isProcessing}
+                    size="lg"
+                    className="w-full gap-2 bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-lg shadow-emerald-500/20 hover:from-emerald-700 hover:to-teal-700"
+                  >
+                    {isProcessing ? (
+                      <>
+                        <Zap className="h-4 w-4 animate-pulse" />
+                        Traitement en cours…
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="h-4 w-4" />
+                        Transformer et scorer mon CV
+                        <ArrowRight className="h-4 w-4" />
+                      </>
+                    )}
+                  </Button>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Étapes de traitement */}
+            <AnimatePresence>
+              {isProcessing && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                >
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2 text-base">
+                        <Zap className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+                        Progression du traitement
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <ProcessingSteps steps={steps} />
+                      {error && (
+                        <div className="mt-4 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+                          {error}
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* Erreur */}
+            {error && !isProcessing && !showResult && (
+              <Card className="border-destructive/40">
+                <CardContent className="p-4 text-sm text-destructive">
+                  {error}
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Résultat */}
+            {showResult && displayedResult && (
+              <ResultPanel result={displayedResult} onReset={handleReset} />
+            )}
+
+            {/* Chargement d'un élément d'historique */}
+            {loadingHistory && !showResult && (
+              <Card>
+                <CardContent className="flex h-40 items-center justify-center text-sm text-muted-foreground">
+                  Chargement du CV sélectionné…
+                </CardContent>
+              </Card>
+            )}
+          </div>
+
+          {/* Colonne droite : historique */}
+          <div className="lg:sticky lg:top-20 lg:h-[calc(100vh-6rem)]">
+            <HistoryList
+              items={items}
+              loading={historyLoading}
+              onSelect={handleSelectHistory}
+              onRefresh={refresh}
+              onRemove={handleRemove}
+              selectedId={selectedHistoryId}
+            />
+          </div>
+        </div>
+      </main>
+
+      <Footer />
+    </div>
+  )
+}

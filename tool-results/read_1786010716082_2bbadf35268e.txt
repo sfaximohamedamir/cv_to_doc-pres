@@ -1,0 +1,2002 @@
+     1→// Type definitions for pptxgenjs 4.0.1
+     2→// Project: https://gitbrent.github.io/PptxGenJS/
+     3→// Definitions by: Brent Ely <https://github.com/gitbrent/>
+     4→//                 Michael Beaumont <https://github.com/michaelbeaumont>
+     5→//                 Nicholas Tietz-Sokolsky <https://github.com/ntietz>
+     6→//                 David Adams <https://github.com/iota-pi>
+     7→//                 Stephen Cronin <https://github.com/cronin4392>
+     8→// TypeScript Version: 3.x
+     9→
+    10→export as namespace PptxGenJS
+    11→
+    12→export default PptxGenJS
+    13→
+    14→declare class PptxGenJS {
+    15→        /**
+    16→         * PptxGenJS Library Version
+    17→         * @type {string}
+    18→         */
+    19→        readonly version: string
+    20→
+    21→        // Exposed prop types
+    22→        readonly presLayout: PptxGenJS.PresLayout
+    23→        readonly AlignH: typeof PptxGenJS.AlignH
+    24→        readonly AlignV: typeof PptxGenJS.AlignV
+    25→        readonly ChartType: typeof PptxGenJS.ChartType
+    26→        readonly OutputType: typeof PptxGenJS.OutputType
+    27→        readonly SchemeColor: typeof PptxGenJS.SchemeColor
+    28→        readonly ShapeType: typeof PptxGenJS.ShapeType
+    29→        readonly PlaceholderType: typeof PptxGenJS.PLACEHOLDER_TYPES
+    30→
+    31→        // Presentation Props
+    32→
+    33→        /**
+    34→         * Presentation layout name.
+    35→         * Standard layouts:
+    36→         * - 'LAYOUT_4x3'   (10" x 7.5")
+    37→         * - 'LAYOUT_16x9'  (10" x 5.625")
+    38→         * - 'LAYOUT_16x10' (10" x 6.25")
+    39→         * - 'LAYOUT_WIDE'  (13.33" x 7.5")
+    40→         *
+    41→         * Custom layouts:
+    42→         * - Use `pptx.defineLayout()` to create custom layouts (e.g.: 'A4')
+    43→         *
+    44→         * @type {string}
+    45→         * @see https://support.office.com/en-us/article/Change-the-size-of-your-slides-040a811c-be43-40b9-8d04-0de5ed79987e
+    46→         */
+    47→        layout: string
+    48→        /**
+    49→         * Whether Right-to-Left (RTL) mode is enabled
+    50→         * @type {boolean}
+    51→         */
+    52→        rtlMode: boolean
+    53→
+    54→        // Presentation Metadata
+    55→        /**
+    56→         * Author name
+    57→         * @type {string}
+    58→         */
+    59→        author: string
+    60→        /**
+    61→         * Comapny name
+    62→         * @type {string}
+    63→         */
+    64→        company: string
+    65→        /**
+    66→         * @type {string}
+    67→         * @note the `revision` value must be a whole number only (without "." or "," - otherwise, PowerPoint will throw errors upon opening!)
+    68→         */
+    69→        revision: string
+    70→        /**
+    71→         * Presentation subject
+    72→         * @type {string}
+    73→         */
+    74→        subject: string
+    75→        /**
+    76→         * Presentation theme (default fonts)
+    77→         * @type {ThemeProps}
+    78→         */
+    79→        theme: PptxGenJS.ThemeProps
+    80→        /**
+    81→         * Presentation name
+    82→         * @type {string}
+    83→         */
+    84→        title: string
+    85→
+    86→        // Methods
+    87→
+    88→        /**
+    89→         * Export the current Presentation to stream
+    90→         * @param {WriteBaseProps} props output properties
+    91→         * @returns {Promise<string | ArrayBuffer | Blob | Uint8Array>} file stream
+    92→         */
+    93→        stream(props?: PptxGenJS.WriteBaseProps): Promise<string | ArrayBuffer | Blob | Uint8Array>
+    94→        /**
+    95→         * Export the current Presentation as JSZip content with the selected type
+    96→         * @param {WriteProps} props output properties
+    97→         * @returns {Promise<string | ArrayBuffer | Blob | Uint8Array>} file content in selected type
+    98→         */
+    99→        write(props?: PptxGenJS.WriteProps): Promise<string | ArrayBuffer | Blob | Uint8Array>
+   100→        /**
+   101→         * Export the current Presentation. Writes file to local file system if `fs` exists, otherwise, initiates download in browsers
+   102→         * @param {WriteFileProps} props output file properties
+   103→         * @example pptx.writeFile({ fileName:'CustomerReport.pptx' }) // export presentation as "CustomerReport.pptx"
+   104→         * @example pptx.writeFile({ fileName:'CustomerReport.pptx', compression:true }) // export presentation as "CustomerReport.pptx" compressed (can save up to 30%)
+   105→         * @returns {Promise<string>} the presentation name
+   106→         */
+   107→        writeFile(props?: PptxGenJS.WriteFileProps): Promise<string>
+   108→        /**
+   109→         * Add a new Section to Presentation
+   110→         * @param {SectionProps} props section properties
+   111→         * @example pptx.addSection({ title:'Charts' });
+   112→         */
+   113→        addSection(props: PptxGenJS.SectionProps): void
+   114→        /**
+   115→         * Add a new Slide to Presentation
+   116→         * @param {AddSlideProps} props slide options
+   117→         * @returns {Slide} the new Slide
+   118→         */
+   119→        addSlide(props?: PptxGenJS.AddSlideProps): PptxGenJS.Slide
+   120→        /**
+   121→         * Add a new Slide to Presentation
+   122→         * @param {string} masterName master slide name
+   123→         * @returns {Slide} the new Slide
+   124→         * @deprecated use `addSlide(IAddSlideOptions)`
+   125→         */
+   126→        addSlide(masterName?: string): PptxGenJS.Slide
+   127→        /**
+   128→         * Create a custom Slide Layout in any size
+   129→         * @param {PresLayout} layout an object with user-defined w/h
+   130→         * @example pptx.defineLayout({ name:'A3', width:16.5, height:11.7 });
+   131→         */
+   132→        defineLayout(layout: PptxGenJS.PresLayout): void
+   133→        /**
+   134→         * Create a new slide master [layout] for the Presentation
+   135→         * @param {SlideMasterProps} props layout definition
+   136→         */
+   137→        defineSlideMaster(props: PptxGenJS.SlideMasterProps): void
+   138→        /**
+   139→         * Reproduces an HTML table as a PowerPoint table - including column widths, style, etc. - creates 1 or more slides as needed
+   140→         * @param {string} eleId table HTML element ID
+   141→         * @param {TableToSlidesProps} props generation options
+   142→         */
+   143→        tableToSlides(eleId: string, props?: PptxGenJS.TableToSlidesProps): void
+   144→}
+   145→
+   146→declare namespace PptxGenJS {
+   147→        // Exported enums for module apps
+   148→        // @example: pptxgen.ShapeType.rect
+   149→        export enum AlignH {
+   150→                'left' = 'left',
+   151→                'center' = 'center',
+   152→                'right' = 'right',
+   153→                'justify' = 'justify',
+   154→        }
+   155→        export enum AlignV {
+   156→                'top' = 'top',
+   157→                'middle' = 'middle',
+   158→                'bottom' = 'bottom',
+   159→        }
+   160→        export enum ChartType {
+   161→                'area' = 'area',
+   162→                'bar' = 'bar',
+   163→                'bar3d' = 'bar3D',
+   164→                'bubble' = 'bubble',
+   165→                'bubble3d' = 'bubble3D',
+   166→                'doughnut' = 'doughnut',
+   167→                'line' = 'line',
+   168→                'pie' = 'pie',
+   169→                'radar' = 'radar',
+   170→                'scatter' = 'scatter',
+   171→        }
+   172→        export enum OutputType {
+   173→                'arraybuffer' = 'arraybuffer',
+   174→                'base64' = 'base64',
+   175→                'binarystring' = 'binarystring',
+   176→                'blob' = 'blob',
+   177→                'nodebuffer' = 'nodebuffer',
+   178→                'uint8array' = 'uint8array',
+   179→        }
+   180→        /**
+   181→         * TODO: FUTURE: v4.0: rename to `SchemeColor`
+   182→         */
+   183→        export enum SchemeColor {
+   184→                'text1' = 'tx1',
+   185→                'text2' = 'tx2',
+   186→                'background1' = 'bg1',
+   187→                'background2' = 'bg2',
+   188→                'accent1' = 'accent1',
+   189→                'accent2' = 'accent2',
+   190→                'accent3' = 'accent3',
+   191→                'accent4' = 'accent4',
+   192→                'accent5' = 'accent5',
+   193→                'accent6' = 'accent6',
+   194→        }
+   195→        export enum ShapeType {
+   196→                'accentBorderCallout1' = 'accentBorderCallout1',
+   197→                'accentBorderCallout2' = 'accentBorderCallout2',
+   198→                'accentBorderCallout3' = 'accentBorderCallout3',
+   199→                'accentCallout1' = 'accentCallout1',
+   200→                'accentCallout2' = 'accentCallout2',
+   201→                'accentCallout3' = 'accentCallout3',
+   202→                'actionButtonBackPrevious' = 'actionButtonBackPrevious',
+   203→                'actionButtonBeginning' = 'actionButtonBeginning',
+   204→                'actionButtonBlank' = 'actionButtonBlank',
+   205→                'actionButtonDocument' = 'actionButtonDocument',
+   206→                'actionButtonEnd' = 'actionButtonEnd',
+   207→                'actionButtonForwardNext' = 'actionButtonForwardNext',
+   208→                'actionButtonHelp' = 'actionButtonHelp',
+   209→                'actionButtonHome' = 'actionButtonHome',
+   210→                'actionButtonInformation' = 'actionButtonInformation',
+   211→                'actionButtonMovie' = 'actionButtonMovie',
+   212→                'actionButtonReturn' = 'actionButtonReturn',
+   213→                'actionButtonSound' = 'actionButtonSound',
+   214→                'arc' = 'arc',
+   215→                'bentArrow' = 'bentArrow',
+   216→                'bentUpArrow' = 'bentUpArrow',
+   217→                'bevel' = 'bevel',
+   218→                'blockArc' = 'blockArc',
+   219→                'borderCallout1' = 'borderCallout1',
+   220→                'borderCallout2' = 'borderCallout2',
+   221→                'borderCallout3' = 'borderCallout3',
+   222→                'bracePair' = 'bracePair',
+   223→                'bracketPair' = 'bracketPair',
+   224→                'callout1' = 'callout1',
+   225→                'callout2' = 'callout2',
+   226→                'callout3' = 'callout3',
+   227→                'can' = 'can',
+   228→                'chartPlus' = 'chartPlus',
+   229→                'chartStar' = 'chartStar',
+   230→                'chartX' = 'chartX',
+   231→                'chevron' = 'chevron',
+   232→                'chord' = 'chord',
+   233→                'circularArrow' = 'circularArrow',
+   234→                'cloud' = 'cloud',
+   235→                'cloudCallout' = 'cloudCallout',
+   236→                'corner' = 'corner',
+   237→                'cornerTabs' = 'cornerTabs',
+   238→                'cube' = 'cube',
+   239→                'curvedDownArrow' = 'curvedDownArrow',
+   240→                'curvedLeftArrow' = 'curvedLeftArrow',
+   241→                'curvedRightArrow' = 'curvedRightArrow',
+   242→                'curvedUpArrow' = 'curvedUpArrow',
+   243→                'decagon' = 'decagon',
+   244→                'diagStripe' = 'diagStripe',
+   245→                'diamond' = 'diamond',
+   246→                'dodecagon' = 'dodecagon',
+   247→                'donut' = 'donut',
+   248→                'doubleWave' = 'doubleWave',
+   249→                'downArrow' = 'downArrow',
+   250→                'downArrowCallout' = 'downArrowCallout',
+   251→                'ellipse' = 'ellipse',
+   252→                'ellipseRibbon' = 'ellipseRibbon',
+   253→                'ellipseRibbon2' = 'ellipseRibbon2',
+   254→                'flowChartAlternateProcess' = 'flowChartAlternateProcess',
+   255→                'flowChartCollate' = 'flowChartCollate',
+   256→                'flowChartConnector' = 'flowChartConnector',
+   257→                'flowChartDecision' = 'flowChartDecision',
+   258→                'flowChartDelay' = 'flowChartDelay',
+   259→                'flowChartDisplay' = 'flowChartDisplay',
+   260→                'flowChartDocument' = 'flowChartDocument',
+   261→                'flowChartExtract' = 'flowChartExtract',
+   262→                'flowChartInputOutput' = 'flowChartInputOutput',
+   263→                'flowChartInternalStorage' = 'flowChartInternalStorage',
+   264→                'flowChartMagneticDisk' = 'flowChartMagneticDisk',
+   265→                'flowChartMagneticDrum' = 'flowChartMagneticDrum',
+   266→                'flowChartMagneticTape' = 'flowChartMagneticTape',
+   267→                'flowChartManualInput' = 'flowChartManualInput',
+   268→                'flowChartManualOperation' = 'flowChartManualOperation',
+   269→                'flowChartMerge' = 'flowChartMerge',
+   270→                'flowChartMultidocument' = 'flowChartMultidocument',
+   271→                'flowChartOfflineStorage' = 'flowChartOfflineStorage',
+   272→                'flowChartOffpageConnector' = 'flowChartOffpageConnector',
+   273→                'flowChartOnlineStorage' = 'flowChartOnlineStorage',
+   274→                'flowChartOr' = 'flowChartOr',
+   275→                'flowChartPredefinedProcess' = 'flowChartPredefinedProcess',
+   276→                'flowChartPreparation' = 'flowChartPreparation',
+   277→                'flowChartProcess' = 'flowChartProcess',
+   278→                'flowChartPunchedCard' = 'flowChartPunchedCard',
+   279→                'flowChartPunchedTape' = 'flowChartPunchedTape',
+   280→                'flowChartSort' = 'flowChartSort',
+   281→                'flowChartSummingJunction' = 'flowChartSummingJunction',
+   282→                'flowChartTerminator' = 'flowChartTerminator',
+   283→                'folderCorner' = 'folderCorner',
+   284→                'frame' = 'frame',
+   285→                'funnel' = 'funnel',
+   286→                'gear6' = 'gear6',
+   287→                'gear9' = 'gear9',
+   288→                'halfFrame' = 'halfFrame',
+   289→                'heart' = 'heart',
+   290→                'heptagon' = 'heptagon',
+   291→                'hexagon' = 'hexagon',
+   292→                'homePlate' = 'homePlate',
+   293→                'horizontalScroll' = 'horizontalScroll',
+   294→                'irregularSeal1' = 'irregularSeal1',
+   295→                'irregularSeal2' = 'irregularSeal2',
+   296→                'leftArrow' = 'leftArrow',
+   297→                'leftArrowCallout' = 'leftArrowCallout',
+   298→                'leftBrace' = 'leftBrace',
+   299→                'leftBracket' = 'leftBracket',
+   300→                'leftCircularArrow' = 'leftCircularArrow',
+   301→                'leftRightArrow' = 'leftRightArrow',
+   302→                'leftRightArrowCallout' = 'leftRightArrowCallout',
+   303→                'leftRightCircularArrow' = 'leftRightCircularArrow',
+   304→                'leftRightRibbon' = 'leftRightRibbon',
+   305→                'leftRightUpArrow' = 'leftRightUpArrow',
+   306→                'leftUpArrow' = 'leftUpArrow',
+   307→                'lightningBolt' = 'lightningBolt',
+   308→                'line' = 'line',
+   309→                'lineInv' = 'lineInv',
+   310→                'mathDivide' = 'mathDivide',
+   311→                'mathEqual' = 'mathEqual',
+   312→                'mathMinus' = 'mathMinus',
+   313→                'mathMultiply' = 'mathMultiply',
+   314→                'mathNotEqual' = 'mathNotEqual',
+   315→                'mathPlus' = 'mathPlus',
+   316→                'moon' = 'moon',
+   317→                'nonIsoscelesTrapezoid' = 'nonIsoscelesTrapezoid',
+   318→                'noSmoking' = 'noSmoking',
+   319→                'notchedRightArrow' = 'notchedRightArrow',
+   320→                'octagon' = 'octagon',
+   321→                'parallelogram' = 'parallelogram',
+   322→                'pentagon' = 'pentagon',
+   323→                'pie' = 'pie',
+   324→                'pieWedge' = 'pieWedge',
+   325→                'plaque' = 'plaque',
+   326→                'plaqueTabs' = 'plaqueTabs',
+   327→                'plus' = 'plus',
+   328→                'quadArrow' = 'quadArrow',
+   329→                'quadArrowCallout' = 'quadArrowCallout',
+   330→                'rect' = 'rect',
+   331→                'ribbon' = 'ribbon',
+   332→                'ribbon2' = 'ribbon2',
+   333→                'rightArrow' = 'rightArrow',
+   334→                'rightArrowCallout' = 'rightArrowCallout',
+   335→                'rightBrace' = 'rightBrace',
+   336→                'rightBracket' = 'rightBracket',
+   337→                'round1Rect' = 'round1Rect',
+   338→                'round2DiagRect' = 'round2DiagRect',
+   339→                'round2SameRect' = 'round2SameRect',
+   340→                'roundRect' = 'roundRect',
+   341→                'rtTriangle' = 'rtTriangle',
+   342→                'smileyFace' = 'smileyFace',
+   343→                'snip1Rect' = 'snip1Rect',
+   344→                'snip2DiagRect' = 'snip2DiagRect',
+   345→                'snip2SameRect' = 'snip2SameRect',
+   346→                'snipRoundRect' = 'snipRoundRect',
+   347→                'squareTabs' = 'squareTabs',
+   348→                'star10' = 'star10',
+   349→                'star12' = 'star12',
+   350→                'star16' = 'star16',
+   351→                'star24' = 'star24',
+   352→                'star32' = 'star32',
+   353→                'star4' = 'star4',
+   354→                'star5' = 'star5',
+   355→                'star6' = 'star6',
+   356→                'star7' = 'star7',
+   357→                'star8' = 'star8',
+   358→                'stripedRightArrow' = 'stripedRightArrow',
+   359→                'sun' = 'sun',
+   360→                'swooshArrow' = 'swooshArrow',
+   361→                'teardrop' = 'teardrop',
+   362→                'trapezoid' = 'trapezoid',
+   363→                'triangle' = 'triangle',
+   364→                'upArrow' = 'upArrow',
+   365→                'upArrowCallout' = 'upArrowCallout',
+   366→                'upDownArrow' = 'upDownArrow',
+   367→                'upDownArrowCallout' = 'upDownArrowCallout',
+   368→                'uturnArrow' = 'uturnArrow',
+   369→                'verticalScroll' = 'verticalScroll',
+   370→                'wave' = 'wave',
+   371→                'wedgeEllipseCallout' = 'wedgeEllipseCallout',
+   372→                'wedgeRectCallout' = 'wedgeRectCallout',
+   373→                'wedgeRoundRectCallout' = 'wedgeRoundRectCallout',
+   374→        }
+   375→        // used by charts, shape, text
+   376→        export interface BorderOptions {
+   377→                /**
+   378→                 * Border type
+   379→                 */
+   380→                type?: 'none' | 'dash' | 'solid'
+   381→                /**
+   382→                 * Border color (hex)
+   383→                 * @example 'FF3399'
+   384→                 */
+   385→                color?: HexColor
+   386→                /**
+   387→                 * Border size (points)
+   388→                 */
+   389→                pt?: number
+   390→        }
+   391→        // These are used by browser/script clients and have been named like this since v0.1.
+   392→        // Desc: charts and shapes for `pptxgen.charts.` `pptxgen.shapes.`
+   393→        // Note: "charts" and "shapes" are manually created by cloning
+   394→        export enum charts {
+   395→                'AREA' = 'area',
+   396→                'BAR' = 'bar',
+   397→                'BAR3D' = 'bar3D',
+   398→                'BUBBLE' = 'bubble',
+   399→                'DOUGHNUT' = 'doughnut',
+   400→                'LINE' = 'line',
+   401→                'PIE' = 'pie',
+   402→                'RADAR' = 'radar',
+   403→                'SCATTER' = 'scatter',
+   404→        }
+   405→        export enum shapes {
+   406→                ACTION_BUTTON_BACK_OR_PREVIOUS = 'actionButtonBackPrevious',
+   407→                ACTION_BUTTON_BEGINNING = 'actionButtonBeginning',
+   408→                ACTION_BUTTON_CUSTOM = 'actionButtonBlank',
+   409→                ACTION_BUTTON_DOCUMENT = 'actionButtonDocument',
+   410→                ACTION_BUTTON_END = 'actionButtonEnd',
+   411→                ACTION_BUTTON_FORWARD_OR_NEXT = 'actionButtonForwardNext',
+   412→                ACTION_BUTTON_HELP = 'actionButtonHelp',
+   413→                ACTION_BUTTON_HOME = 'actionButtonHome',
+   414→                ACTION_BUTTON_INFORMATION = 'actionButtonInformation',
+   415→                ACTION_BUTTON_MOVIE = 'actionButtonMovie',
+   416→                ACTION_BUTTON_RETURN = 'actionButtonReturn',
+   417→                ACTION_BUTTON_SOUND = 'actionButtonSound',
+   418→                ARC = 'arc',
+   419→                BALLOON = 'wedgeRoundRectCallout',
+   420→                BENT_ARROW = 'bentArrow',
+   421→                BENT_UP_ARROW = 'bentUpArrow',
+   422→                BEVEL = 'bevel',
+   423→                BLOCK_ARC = 'blockArc',
+   424→                CAN = 'can',
+   425→                CHART_PLUS = 'chartPlus',
+   426→                CHART_STAR = 'chartStar',
+   427→                CHART_X = 'chartX',
+   428→                CHEVRON = 'chevron',
+   429→                CHORD = 'chord',
+   430→                CIRCULAR_ARROW = 'circularArrow',
+   431→                CLOUD = 'cloud',
+   432→                CLOUD_CALLOUT = 'cloudCallout',
+   433→                CORNER = 'corner',
+   434→                CORNER_TABS = 'cornerTabs',
+   435→                CROSS = 'plus',
+   436→                CUBE = 'cube',
+   437→                CURVED_DOWN_ARROW = 'curvedDownArrow',
+   438→                CURVED_DOWN_RIBBON = 'ellipseRibbon',
+   439→                CURVED_LEFT_ARROW = 'curvedLeftArrow',
+   440→                CURVED_RIGHT_ARROW = 'curvedRightArrow',
+   441→                CURVED_UP_ARROW = 'curvedUpArrow',
+   442→                CURVED_UP_RIBBON = 'ellipseRibbon2',
+   443→                DECAGON = 'decagon',
+   444→                DIAGONAL_STRIPE = 'diagStripe',
+   445→                DIAMOND = 'diamond',
+   446→                DODECAGON = 'dodecagon',
+   447→                DONUT = 'donut',
+   448→                DOUBLE_BRACE = 'bracePair',
+   449→                DOUBLE_BRACKET = 'bracketPair',
+   450→                DOUBLE_WAVE = 'doubleWave',
+   451→                DOWN_ARROW = 'downArrow',
+   452→                DOWN_ARROW_CALLOUT = 'downArrowCallout',
+   453→                DOWN_RIBBON = 'ribbon',
+   454→                EXPLOSION1 = 'irregularSeal1',
+   455→                EXPLOSION2 = 'irregularSeal2',
+   456→                FLOWCHART_ALTERNATE_PROCESS = 'flowChartAlternateProcess',
+   457→                FLOWCHART_CARD = 'flowChartPunchedCard',
+   458→                FLOWCHART_COLLATE = 'flowChartCollate',
+   459→                FLOWCHART_CONNECTOR = 'flowChartConnector',
+   460→                FLOWCHART_DATA = 'flowChartInputOutput',
+   461→                FLOWCHART_DECISION = 'flowChartDecision',
+   462→                FLOWCHART_DELAY = 'flowChartDelay',
+   463→                FLOWCHART_DIRECT_ACCESS_STORAGE = 'flowChartMagneticDrum',
+   464→                FLOWCHART_DISPLAY = 'flowChartDisplay',
+   465→                FLOWCHART_DOCUMENT = 'flowChartDocument',
+   466→                FLOWCHART_EXTRACT = 'flowChartExtract',
+   467→                FLOWCHART_INTERNAL_STORAGE = 'flowChartInternalStorage',
+   468→                FLOWCHART_MAGNETIC_DISK = 'flowChartMagneticDisk',
+   469→                FLOWCHART_MANUAL_INPUT = 'flowChartManualInput',
+   470→                FLOWCHART_MANUAL_OPERATION = 'flowChartManualOperation',
+   471→                FLOWCHART_MERGE = 'flowChartMerge',
+   472→                FLOWCHART_MULTIDOCUMENT = 'flowChartMultidocument',
+   473→                FLOWCHART_OFFLINE_STORAGE = 'flowChartOfflineStorage',
+   474→                FLOWCHART_OFFPAGE_CONNECTOR = 'flowChartOffpageConnector',
+   475→                FLOWCHART_OR = 'flowChartOr',
+   476→                FLOWCHART_PREDEFINED_PROCESS = 'flowChartPredefinedProcess',
+   477→                FLOWCHART_PREPARATION = 'flowChartPreparation',
+   478→                FLOWCHART_PROCESS = 'flowChartProcess',
+   479→                FLOWCHART_PUNCHED_TAPE = 'flowChartPunchedTape',
+   480→                FLOWCHART_SEQUENTIAL_ACCESS_STORAGE = 'flowChartMagneticTape',
+   481→                FLOWCHART_SORT = 'flowChartSort',
+   482→                FLOWCHART_STORED_DATA = 'flowChartOnlineStorage',
+   483→                FLOWCHART_SUMMING_JUNCTION = 'flowChartSummingJunction',
+   484→                FLOWCHART_TERMINATOR = 'flowChartTerminator',
+   485→                FOLDED_CORNER = 'folderCorner',
+   486→                FRAME = 'frame',
+   487→                FUNNEL = 'funnel',
+   488→                GEAR_6 = 'gear6',
+   489→                GEAR_9 = 'gear9',
+   490→                HALF_FRAME = 'halfFrame',
+   491→                HEART = 'heart',
+   492→                HEPTAGON = 'heptagon',
+   493→                HEXAGON = 'hexagon',
+   494→                HORIZONTAL_SCROLL = 'horizontalScroll',
+   495→                ISOSCELES_TRIANGLE = 'triangle',
+   496→                LEFT_ARROW = 'leftArrow',
+   497→                LEFT_ARROW_CALLOUT = 'leftArrowCallout',
+   498→                LEFT_BRACE = 'leftBrace',
+   499→                LEFT_BRACKET = 'leftBracket',
+   500→                LEFT_CIRCULAR_ARROW = 'leftCircularArrow',
+   501→                LEFT_RIGHT_ARROW = 'leftRightArrow',
+   502→                LEFT_RIGHT_ARROW_CALLOUT = 'leftRightArrowCallout',
+   503→                LEFT_RIGHT_CIRCULAR_ARROW = 'leftRightCircularArrow',
+   504→                LEFT_RIGHT_RIBBON = 'leftRightRibbon',
+   505→                LEFT_RIGHT_UP_ARROW = 'leftRightUpArrow',
+   506→                LEFT_UP_ARROW = 'leftUpArrow',
+   507→                LIGHTNING_BOLT = 'lightningBolt',
+   508→                LINE_CALLOUT_1 = 'borderCallout1',
+   509→                LINE_CALLOUT_1_ACCENT_BAR = 'accentCallout1',
+   510→                LINE_CALLOUT_1_BORDER_AND_ACCENT_BAR = 'accentBorderCallout1',
+   511→                LINE_CALLOUT_1_NO_BORDER = 'callout1',
+   512→                LINE_CALLOUT_2 = 'borderCallout2',
+   513→                LINE_CALLOUT_2_ACCENT_BAR = 'accentCallout2',
+   514→                LINE_CALLOUT_2_BORDER_AND_ACCENT_BAR = 'accentBorderCallout2',
+   515→                LINE_CALLOUT_2_NO_BORDER = 'callout2',
+   516→                LINE_CALLOUT_3 = 'borderCallout3',
+   517→                LINE_CALLOUT_3_ACCENT_BAR = 'accentCallout3',
+   518→                LINE_CALLOUT_3_BORDER_AND_ACCENT_BAR = 'accentBorderCallout3',
+   519→                LINE_CALLOUT_3_NO_BORDER = 'callout3',
+   520→                LINE_CALLOUT_4 = 'borderCallout4',
+   521→                LINE_CALLOUT_4_ACCENT_BAR = 'accentCallout4',
+   522→                LINE_CALLOUT_4_BORDER_AND_ACCENT_BAR = 'accentBorderCallout4',
+   523→                LINE_CALLOUT_4_NO_BORDER = 'callout4',
+   524→                LINE = 'line',
+   525→                LINE_INVERSE = 'lineInv',
+   526→                MATH_DIVIDE = 'mathDivide',
+   527→                MATH_EQUAL = 'mathEqual',
+   528→                MATH_MINUS = 'mathMinus',
+   529→                MATH_MULTIPLY = 'mathMultiply',
+   530→                MATH_NOT_EQUAL = 'mathNotEqual',
+   531→                MATH_PLUS = 'mathPlus',
+   532→                MOON = 'moon',
+   533→                NON_ISOSCELES_TRAPEZOID = 'nonIsoscelesTrapezoid',
+   534→                NOTCHED_RIGHT_ARROW = 'notchedRightArrow',
+   535→                NO_SYMBOL = 'noSmoking',
+   536→                OCTAGON = 'octagon',
+   537→                OVAL = 'ellipse',
+   538→                OVAL_CALLOUT = 'wedgeEllipseCallout',
+   539→                PARALLELOGRAM = 'parallelogram',
+   540→                PENTAGON = 'homePlate',
+   541→                PIE = 'pie',
+   542→                PIE_WEDGE = 'pieWedge',
+   543→                PLAQUE = 'plaque',
+   544→                PLAQUE_TABS = 'plaqueTabs',
+   545→                QUAD_ARROW = 'quadArrow',
+   546→                QUAD_ARROW_CALLOUT = 'quadArrowCallout',
+   547→                RECTANGLE = 'rect',
+   548→                RECTANGULAR_CALLOUT = 'wedgeRectCallout',
+   549→                REGULAR_PENTAGON = 'pentagon',
+   550→                RIGHT_ARROW = 'rightArrow',
+   551→                RIGHT_ARROW_CALLOUT = 'rightArrowCallout',
+   552→                RIGHT_BRACE = 'rightBrace',
+   553→                RIGHT_BRACKET = 'rightBracket',
+   554→                RIGHT_TRIANGLE = 'rtTriangle',
+   555→                ROUNDED_RECTANGLE = 'roundRect',
+   556→                ROUNDED_RECTANGULAR_CALLOUT = 'wedgeRoundRectCallout',
+   557→                ROUND_1_RECTANGLE = 'round1Rect',
+   558→                ROUND_2_DIAG_RECTANGLE = 'round2DiagRect',
+   559→                ROUND_2_SAME_RECTANGLE = 'round2SameRect',
+   560→                SMILEY_FACE = 'smileyFace',
+   561→                SNIP_1_RECTANGLE = 'snip1Rect',
+   562→                SNIP_2_DIAG_RECTANGLE = 'snip2DiagRect',
+   563→                SNIP_2_SAME_RECTANGLE = 'snip2SameRect',
+   564→                SNIP_ROUND_RECTANGLE = 'snipRoundRect',
+   565→                SQUARE_TABS = 'squareTabs',
+   566→                STAR_10_POINT = 'star10',
+   567→                STAR_12_POINT = 'star12',
+   568→                STAR_16_POINT = 'star16',
+   569→                STAR_24_POINT = 'star24',
+   570→                STAR_32_POINT = 'star32',
+   571→                STAR_4_POINT = 'star4',
+   572→                STAR_5_POINT = 'star5',
+   573→                STAR_6_POINT = 'star6',
+   574→                STAR_7_POINT = 'star7',
+   575→                STAR_8_POINT = 'star8',
+   576→                STRIPED_RIGHT_ARROW = 'stripedRightArrow',
+   577→                SUN = 'sun',
+   578→                SWOOSH_ARROW = 'swooshArrow',
+   579→                TEAR = 'teardrop',
+   580→                TRAPEZOID = 'trapezoid',
+   581→                UP_ARROW = 'upArrow',
+   582→                UP_ARROW_CALLOUT = 'upArrowCallout',
+   583→                UP_DOWN_ARROW = 'upDownArrow',
+   584→                UP_DOWN_ARROW_CALLOUT = 'upDownArrowCallout',
+   585→                UP_RIBBON = 'ribbon2',
+   586→                U_TURN_ARROW = 'uturnArrow',
+   587→                VERTICAL_SCROLL = 'verticalScroll',
+   588→                WAVE = 'wave',
+   589→        }
+   590→
+   591→        // @source `core-enums.ts`
+   592→        export type JSZIP_OUTPUT_TYPE = 'arraybuffer' | 'base64' | 'binarystring' | 'blob' | 'nodebuffer' | 'uint8array'
+   593→        export type WRITE_OUTPUT_TYPE = JSZIP_OUTPUT_TYPE | 'STREAM'
+   594→        export enum CHART_TYPE {
+   595→                'AREA' = 'area',
+   596→                'BAR' = 'bar',
+   597→                'BAR3D' = 'bar3D',
+   598→                'BUBBLE' = 'bubble',
+   599→                'DOUGHNUT' = 'doughnut',
+   600→                'LINE' = 'line',
+   601→                'PIE' = 'pie',
+   602→                'RADAR' = 'radar',
+   603→                'SCATTER' = 'scatter',
+   604→        }
+   605→        export enum SCHEME_COLOR_NAMES {
+   606→                'TEXT1' = 'tx1',
+   607→                'TEXT2' = 'tx2',
+   608→                'BACKGROUND1' = 'bg1',
+   609→                'BACKGROUND2' = 'bg2',
+   610→                'ACCENT1' = 'accent1',
+   611→                'ACCENT2' = 'accent2',
+   612→                'ACCENT3' = 'accent3',
+   613→                'ACCENT4' = 'accent4',
+   614→                'ACCENT5' = 'accent5',
+   615→                'ACCENT6' = 'accent6',
+   616→        }
+   617→
+   618→        // @source `core-interfaces.d.ts` (via import)
+   619→        // @code `import { CHART_NAME, PLACEHOLDER_TYPES, SHAPE_NAME, SLIDE_OBJECT_TYPES, TEXT_HALIGN, TEXT_VALIGN, WRITE_OUTPUT_TYPE } from './core-enums'`
+   620→        export type CHART_NAME = 'area' | 'bar' | 'bar3D' | 'bubble' | 'doughnut' | 'line' | 'pie' | 'radar' | 'scatter'
+   621→        export enum PLACEHOLDER_TYPES {
+   622→                'title' = 'title',
+   623→                'body' = 'body',
+   624→                'image' = 'pic',
+   625→                'chart' = 'chart',
+   626→                'table' = 'tbl',
+   627→                'media' = 'media',
+   628→        }
+   629→        export type PLACEHOLDER_TYPE = 'title' | 'body' | 'pic' | 'chart' | 'tbl' | 'media'
+   630→
+   631→        export type SHAPE_NAME =
+   632→                | 'accentBorderCallout1'
+   633→                | 'accentBorderCallout2'
+   634→                | 'accentBorderCallout3'
+   635→                | 'accentCallout1'
+   636→                | 'accentCallout2'
+   637→                | 'accentCallout3'
+   638→                | 'actionButtonBackPrevious'
+   639→                | 'actionButtonBeginning'
+   640→                | 'actionButtonBlank'
+   641→                | 'actionButtonDocument'
+   642→                | 'actionButtonEnd'
+   643→                | 'actionButtonForwardNext'
+   644→                | 'actionButtonHelp'
+   645→                | 'actionButtonHome'
+   646→                | 'actionButtonInformation'
+   647→                | 'actionButtonMovie'
+   648→                | 'actionButtonReturn'
+   649→                | 'actionButtonSound'
+   650→                | 'arc'
+   651→                | 'bentArrow'
+   652→                | 'bentUpArrow'
+   653→                | 'bevel'
+   654→                | 'blockArc'
+   655→                | 'borderCallout1'
+   656→                | 'borderCallout2'
+   657→                | 'borderCallout3'
+   658→                | 'bracePair'
+   659→                | 'bracketPair'
+   660→                | 'callout1'
+   661→                | 'callout2'
+   662→                | 'callout3'
+   663→                | 'can'
+   664→                | 'chartPlus'
+   665→                | 'chartStar'
+   666→                | 'chartX'
+   667→                | 'chevron'
+   668→                | 'chord'
+   669→                | 'circularArrow'
+   670→                | 'cloud'
+   671→                | 'cloudCallout'
+   672→                | 'corner'
+   673→                | 'cornerTabs'
+   674→                | 'cube'
+   675→                | 'curvedDownArrow'
+   676→                | 'curvedLeftArrow'
+   677→                | 'curvedRightArrow'
+   678→                | 'curvedUpArrow'
+   679→                | 'decagon'
+   680→                | 'diagStripe'
+   681→                | 'diamond'
+   682→                | 'dodecagon'
+   683→                | 'donut'
+   684→                | 'doubleWave'
+   685→                | 'downArrow'
+   686→                | 'downArrowCallout'
+   687→                | 'ellipse'
+   688→                | 'ellipseRibbon'
+   689→                | 'ellipseRibbon2'
+   690→                | 'flowChartAlternateProcess'
+   691→                | 'flowChartCollate'
+   692→                | 'flowChartConnector'
+   693→                | 'flowChartDecision'
+   694→                | 'flowChartDelay'
+   695→                | 'flowChartDisplay'
+   696→                | 'flowChartDocument'
+   697→                | 'flowChartExtract'
+   698→                | 'flowChartInputOutput'
+   699→                | 'flowChartInternalStorage'
+   700→                | 'flowChartMagneticDisk'
+   701→                | 'flowChartMagneticDrum'
+   702→                | 'flowChartMagneticTape'
+   703→                | 'flowChartManualInput'
+   704→                | 'flowChartManualOperation'
+   705→                | 'flowChartMerge'
+   706→                | 'flowChartMultidocument'
+   707→                | 'flowChartOfflineStorage'
+   708→                | 'flowChartOffpageConnector'
+   709→                | 'flowChartOnlineStorage'
+   710→                | 'flowChartOr'
+   711→                | 'flowChartPredefinedProcess'
+   712→                | 'flowChartPreparation'
+   713→                | 'flowChartProcess'
+   714→                | 'flowChartPunchedCard'
+   715→                | 'flowChartPunchedTape'
+   716→                | 'flowChartSort'
+   717→                | 'flowChartSummingJunction'
+   718→                | 'flowChartTerminator'
+   719→                | 'folderCorner'
+   720→                | 'frame'
+   721→                | 'funnel'
+   722→                | 'gear6'
+   723→                | 'gear9'
+   724→                | 'halfFrame'
+   725→                | 'heart'
+   726→                | 'heptagon'
+   727→                | 'hexagon'
+   728→                | 'homePlate'
+   729→                | 'horizontalScroll'
+   730→                | 'irregularSeal1'
+   731→                | 'irregularSeal2'
+   732→                | 'leftArrow'
+   733→                | 'leftArrowCallout'
+   734→                | 'leftBrace'
+   735→                | 'leftBracket'
+   736→                | 'leftCircularArrow'
+   737→                | 'leftRightArrow'
+   738→                | 'leftRightArrowCallout'
+   739→                | 'leftRightCircularArrow'
+   740→                | 'leftRightRibbon'
+   741→                | 'leftRightUpArrow'
+   742→                | 'leftUpArrow'
+   743→                | 'lightningBolt'
+   744→                | 'line'
+   745→                | 'lineInv'
+   746→                | 'mathDivide'
+   747→                | 'mathEqual'
+   748→                | 'mathMinus'
+   749→                | 'mathMultiply'
+   750→                | 'mathNotEqual'
+   751→                | 'mathPlus'
+   752→                | 'moon'
+   753→                | 'noSmoking'
+   754→                | 'nonIsoscelesTrapezoid'
+   755→                | 'notchedRightArrow'
+   756→                | 'octagon'
+   757→                | 'parallelogram'
+   758→                | 'pentagon'
+   759→                | 'pie'
+   760→                | 'pieWedge'
+   761→                | 'plaque'
+   762→                | 'plaqueTabs'
+   763→                | 'plus'
+   764→                | 'quadArrow'
+   765→                | 'quadArrowCallout'
+   766→                | 'rect'
+   767→                | 'ribbon'
+   768→                | 'ribbon2'
+   769→                | 'rightArrow'
+   770→                | 'rightArrowCallout'
+   771→                | 'rightBrace'
+   772→                | 'rightBracket'
+   773→                | 'round1Rect'
+   774→                | 'round2DiagRect'
+   775→                | 'round2SameRect'
+   776→                | 'roundRect'
+   777→                | 'rtTriangle'
+   778→                | 'smileyFace'
+   779→                | 'snip1Rect'
+   780→                | 'snip2DiagRect'
+   781→                | 'snip2SameRect'
+   782→                | 'snipRoundRect'
+   783→                | 'squareTabs'
+   784→                | 'star10'
+   785→                | 'star12'
+   786→                | 'star16'
+   787→                | 'star24'
+   788→                | 'star32'
+   789→                | 'star4'
+   790→                | 'star5'
+   791→                | 'star6'
+   792→                | 'star7'
+   793→                | 'star8'
+   794→                | 'stripedRightArrow'
+   795→                | 'sun'
+   796→                | 'swooshArrow'
+   797→                | 'teardrop'
+   798→                | 'trapezoid'
+   799→                | 'triangle'
+   800→                | 'upArrow'
+   801→                | 'upArrowCallout'
+   802→                | 'upDownArrow'
+   803→                | 'upDownArrowCallout'
+   804→                | 'uturnArrow'
+   805→                | 'verticalScroll'
+   806→                | 'wave'
+   807→                | 'wedgeEllipseCallout'
+   808→                | 'wedgeRectCallout'
+   809→                | 'wedgeRoundRectCallout'
+   810→
+   811→        export enum SLIDE_OBJECT_TYPES {
+   812→                'chart' = 'chart',
+   813→                'hyperlink' = 'hyperlink',
+   814→                'image' = 'image',
+   815→                'media' = 'media',
+   816→                'online' = 'online',
+   817→                'placeholder' = 'placeholder',
+   818→                'table' = 'table',
+   819→                'tablecell' = 'tablecell',
+   820→                'text' = 'text',
+   821→                'notes' = 'notes',
+   822→        }
+   823→        export enum TEXT_HALIGN {
+   824→                'left' = 'left',
+   825→                'center' = 'center',
+   826→                'right' = 'right',
+   827→                'justify' = 'justify',
+   828→        }
+   829→        export enum TEXT_VALIGN {
+   830→                'b' = 'b',
+   831→                'ctr' = 'ctr',
+   832→                't' = 't',
+   833→        }
+   834→
+   835→        // @source `core-interfaces.d.ts` (direct)
+   836→        // Core Types
+   837→        // ==========
+   838→
+   839→        /**
+   840→         * Coordinate number - either:
+   841→         * - Inches (0-n)
+   842→         * - Percentage (0-100)
+   843→         *
+   844→         * @example 10.25 // coordinate in inches
+   845→         * @example '75%' // coordinate as percentage of slide size
+   846→         */
+   847→        export type Coord = number | `${number}%`
+   848→        export interface PositionProps {
+   849→                /**
+   850→                 * Horizontal position
+   851→                 * - inches or percentage
+   852→                 * @example 10.25 // position in inches
+   853→                 * @example '75%' // position as percentage of slide size
+   854→                 */
+   855→                x?: Coord
+   856→                /**
+   857→                 * Vertical position
+   858→                 * - inches or percentage
+   859→                 * @example 10.25 // position in inches
+   860→                 * @example '75%' // position as percentage of slide size
+   861→                 */
+   862→                y?: Coord
+   863→                /**
+   864→                 * Height
+   865→                 * - inches or percentage
+   866→                 * @example 10.25 // height in inches
+   867→                 * @example '75%' // height as percentage of slide size
+   868→                 */
+   869→                h?: Coord
+   870→                /**
+   871→                 * Width
+   872→                 * - inches or percentage
+   873→                 * @example 10.25 // width in inches
+   874→                 * @example '75%' // width as percentage of slide size
+   875→                 */
+   876→                w?: Coord
+   877→        }
+   878→        /**
+   879→         * Either `data` or `path` is required
+   880→         */
+   881→        export interface DataOrPathProps {
+   882→                /**
+   883→                 * URL or relative path
+   884→                 *
+   885→                 * @example 'https://onedrives.com/myimg.png` // retrieve image via URL
+   886→                 * @example '/home/gitbrent/images/myimg.png` // retrieve image via local path
+   887→                 */
+   888→                path?: string
+   889→                /**
+   890→                 * base64-encoded string
+   891→                 * - Useful for avoiding potential path/server issues
+   892→                 *
+   893→                 * @example 'image/png;base64,iVtDafDrBF[...]=' // pre-encoded image in base-64
+   894→                 */
+   895→                data?: string
+   896→        }
+   897→        export interface BackgroundProps extends DataOrPathProps, ShapeFillProps {
+   898→                /**
+   899→                 * Color (hex format)
+   900→                 * @deprecated v3.6.0 - use `ShapeFillProps` instead
+   901→                 */
+   902→                fill?: HexColor
+   903→
+   904→                /**
+   905→                 * source URL
+   906→                 * @deprecated v3.6.0 - use `DataOrPathProps` instead - remove in v4.0.0
+   907→                 */
+   908→                src?: string
+   909→        }
+   910→        /**
+   911→         * Color in Hex format
+   912→         * @example 'FF3399'
+   913→         */
+   914→        export type HexColor = string
+   915→        export type ThemeColor = 'tx1' | 'tx2' | 'bg1' | 'bg2' | 'accent1' | 'accent2' | 'accent3' | 'accent4' | 'accent5' | 'accent6'
+   916→        export type Color = HexColor | ThemeColor
+   917→        export type Margin = number | [number, number, number, number]
+   918→        export type HAlign = 'left' | 'center' | 'right' | 'justify'
+   919→        export type VAlign = 'top' | 'middle' | 'bottom'
+   920→
+   921→        // used by charts, shape, text
+   922→        export interface BorderProps {
+   923→                /**
+   924→                 * Border type
+   925→                 * @default solid
+   926→                 */
+   927→                type?: 'none' | 'dash' | 'solid'
+   928→                /**
+   929→                 * Border color (hex)
+   930→                 * @example 'FF3399'
+   931→                 * @default '666666'
+   932→                 */
+   933→                color?: HexColor
+   934→
+   935→                // TODO: add `transparency` prop to Borders (0-100%)
+   936→
+   937→                // TODO: add `width` - deprecate `pt`
+   938→                /**
+   939→                 * Border size (points)
+   940→                 * @default 1
+   941→                 */
+   942→                pt?: number
+   943→        }
+   944→        // used by: image, object, text,
+   945→        export interface HyperlinkProps {
+   946→                //_rId: number
+   947→                /**
+   948→                 * Slide number to link to
+   949→                 */
+   950→                slide?: number
+   951→                /**
+   952→                 * Url to link to
+   953→                 */
+   954→                url?: string
+   955→                /**
+   956→                 * Hyperlink Tooltip
+   957→                 */
+   958→                tooltip?: string
+   959→        }
+   960→        // used by: chart, text, image
+   961→        export interface ShadowProps {
+   962→                /**
+   963→                 * shadow type
+   964→                 * @default 'none'
+   965→                 */
+   966→                type: 'outer' | 'inner' | 'none'
+   967→                /**
+   968→                 * opacity (percent)
+   969→                 * - range: 0.0-1.0
+   970→                 * @example 0.5 // 50% opaque
+   971→                 */
+   972→                opacity?: number // TODO: "Transparency (0-100%)" in PPT // TODO: deprecate and add `transparency`
+   973→                /**
+   974→                 * blur (points)
+   975→                 * - range: 0-100
+   976→                 * @default 0
+   977→                 */
+   978→                blur?: number
+   979→                /**
+   980→                 * angle (degrees)
+   981→                 * - range: 0-359
+   982→                 * @default 0
+   983→                 */
+   984→                angle?: number
+   985→                /**
+   986→                 * shadow offset (points)
+   987→                 * - range: 0-200
+   988→                 * @default 0
+   989→                 */
+   990→                offset?: number // TODO: "Distance" in PPT
+   991→                /**
+   992→                 * shadow color (hex format)
+   993→                 * @example 'FF3399'
+   994→                 */
+   995→                color?: HexColor
+   996→                /**
+   997→                 * whether to rotate shadow with shape
+   998→                 * @default false
+   999→                 */
+  1000→                rotateWithShape?: boolean
+  1001→        }
+  1002→        // used by: shape, table, text
+  1003→        export interface ShapeFillProps {
+  1004→                /**
+  1005→                 * Fill color
+  1006→                 * - `HexColor` or `ThemeColor`
+  1007→                 * @example 'FF0000' // hex color (red)
+  1008→                 * @example pptx.SchemeColor.text1 // Theme color (Text1)
+  1009→                 */
+  1010→                color?: Color
+  1011→                /**
+  1012→                 * Transparency (percent)
+  1013→                 * - MS-PPT > Format Shape > Fill & Line > Fill > Transparency
+  1014→                 * - range: 0-100
+  1015→                 * @default 0
+  1016→                 */
+  1017→                transparency?: number
+  1018→                /**
+  1019→                 * Fill type
+  1020→                 * @default 'solid'
+  1021→                 */
+  1022→                type?: 'none' | 'solid'
+  1023→
+  1024→                /**
+  1025→                 * Transparency (percent)
+  1026→                 * @deprecated v3.3.0 - use `transparency`
+  1027→                 */
+  1028→                alpha?: number
+  1029→        }
+  1030→        export interface ShapeLineProps extends ShapeFillProps {
+  1031→                /**
+  1032→                 * Line width (pt)
+  1033→                 * @default 1
+  1034→                 */
+  1035→                width?: number
+  1036→                /**
+  1037→                 * Dash type
+  1038→                 * @default 'solid'
+  1039→                 */
+  1040→                dashType?: 'solid' | 'dash' | 'dashDot' | 'lgDash' | 'lgDashDot' | 'lgDashDotDot' | 'sysDash' | 'sysDot'
+  1041→                /**
+  1042→                 * Begin arrow type
+  1043→                 * @since v3.3.0
+  1044→                 */
+  1045→                beginArrowType?: 'none' | 'arrow' | 'diamond' | 'oval' | 'stealth' | 'triangle'
+  1046→                /**
+  1047→                 * End arrow type
+  1048→                 * @since v3.3.0
+  1049→                 */
+  1050→                endArrowType?: 'none' | 'arrow' | 'diamond' | 'oval' | 'stealth' | 'triangle'
+  1051→                // FUTURE: beginArrowSize (1-9)
+  1052→                // FUTURE: endArrowSize (1-9)
+  1053→
+  1054→                /**
+  1055→                 * Dash type
+  1056→                 * @deprecated v3.3.0 - use `dashType`
+  1057→                 */
+  1058→                lineDash?: 'solid' | 'dash' | 'dashDot' | 'lgDash' | 'lgDashDot' | 'lgDashDotDot' | 'sysDash' | 'sysDot'
+  1059→                /**
+  1060→                 * @deprecated v3.3.0 - use `beginArrowType`
+  1061→                 */
+  1062→                lineHead?: 'none' | 'arrow' | 'diamond' | 'oval' | 'stealth' | 'triangle'
+  1063→                /**
+  1064→                 * @deprecated v3.3.0 - use `endArrowType`
+  1065→                 */
+  1066→                lineTail?: 'none' | 'arrow' | 'diamond' | 'oval' | 'stealth' | 'triangle'
+  1067→                /**
+  1068→                 * Line width (pt)
+  1069→                 * @deprecated v3.3.0 - use `width`
+  1070→                 */
+  1071→                pt?: number
+  1072→                /**
+  1073→                 * Line size (pt)
+  1074→                 * @deprecated v3.3.0 - use `width`
+  1075→                 */
+  1076→                size?: number
+  1077→        }
+  1078→        // used by: chart, slide, table, text
+  1079→        export interface TextBaseProps {
+  1080→                /**
+  1081→                 * Horizontal alignment
+  1082→                 * @default 'left'
+  1083→                 */
+  1084→                align?: HAlign
+  1085→                /**
+  1086→                 * Bold style
+  1087→                 * @default false
+  1088→                 */
+  1089→                bold?: boolean
+  1090→                /**
+  1091→                 * Add a line-break
+  1092→                 * @default false
+  1093→                 */
+  1094→                breakLine?: boolean
+  1095→                /**
+  1096→                 * Add standard or custom bullet
+  1097→                 * - use `true` for standard bullet
+  1098→                 * - pass object options for custom bullet
+  1099→                 * @default false
+  1100→                 */
+  1101→                bullet?:
+  1102→                | boolean
+  1103→                | {
+  1104→                        /**
+  1105→                         * Bullet type
+  1106→                         * @default bullet
+  1107→                         */
+  1108→                        type?: 'bullet' | 'number'
+  1109→                        /**
+  1110→                         * Bullet character code (unicode)
+  1111→                         * @since v3.3.0
+  1112→                         * @example '25BA' // 'BLACK RIGHT-POINTING POINTER' (U+25BA)
+  1113→                         */
+  1114→                        characterCode?: string
+  1115→                        /**
+  1116→                         * Indentation (space between bullet and text) (points)
+  1117→                         * @since v3.3.0
+  1118→                         * @default 27 // DEF_BULLET_MARGIN
+  1119→                         * @example 10 // Indents text 10 points from bullet
+  1120→                         */
+  1121→                        indent?: number
+  1122→                        /**
+  1123→                         * Number type
+  1124→                         * @since v3.3.0
+  1125→                         * @example 'romanLcParenR' // roman numerals lower-case with paranthesis right
+  1126→                         */
+  1127→                        numberType?:
+  1128→                        | 'alphaLcParenBoth'
+  1129→                        | 'alphaLcParenR'
+  1130→                        | 'alphaLcPeriod'
+  1131→                        | 'alphaUcParenBoth'
+  1132→                        | 'alphaUcParenR'
+  1133→                        | 'alphaUcPeriod'
+  1134→                        | 'arabicParenBoth'
+  1135→                        | 'arabicParenR'
+  1136→                        | 'arabicPeriod'
+  1137→                        | 'arabicPlain'
+  1138→                        | 'romanLcParenBoth'
+  1139→                        | 'romanLcParenR'
+  1140→                        | 'romanLcPeriod'
+  1141→                        | 'romanUcParenBoth'
+  1142→                        | 'romanUcParenR'
+  1143→                        | 'romanUcPeriod'
+  1144→                        /**
+  1145→                         * Number bullets start at
+  1146→                         * @since v3.3.0
+  1147→                         * @default 1
+  1148→                         * @example 10 // numbered bullets start with 10
+  1149→                         */
+  1150→                        numberStartAt?: number
+  1151→
+  1152→                        // DEPRECATED
+  1153→
+  1154→                        /**
+  1155→                         * Bullet code (unicode)
+  1156→                         * @deprecated v3.3.0 - use `characterCode`
+  1157→                         */
+  1158→                        code?: string
+  1159→                        /**
+  1160→                         * Margin between bullet and text
+  1161→                         * @since v3.2.1
+  1162→                         * @deplrecated v3.3.0 - use `indent`
+  1163→                         */
+  1164→                        marginPt?: number
+  1165→                        /**
+  1166→                         * Number to start with (only applies to type:number)
+  1167→                         * @deprecated v3.3.0 - use `numberStartAt`
+  1168→                         */
+  1169→                        startAt?: number
+  1170→                        /**
+  1171→                         * Number type
+  1172→                         * @deprecated v3.3.0 - use `numberType`
+  1173→                         */
+  1174→                        style?: string
+  1175→                }
+  1176→                /**
+  1177→                 * Text color
+  1178→                 * - `HexColor` or `ThemeColor`
+  1179→                 * - MS-PPT > Format Shape > Text Options > Text Fill & Outline > Text Fill > Color
+  1180→                 * @example 'FF0000' // hex color (red)
+  1181→                 * @example pptx.SchemeColor.text1 // Theme color (Text1)
+  1182→                 */
+  1183→                color?: Color
+  1184→                /**
+  1185→                 * Font face name
+  1186→                 * @example 'Arial' // Arial font
+  1187→                 */
+  1188→                fontFace?: string
+  1189→                /**
+  1190→                 * Font size
+  1191→                 * @example 12 // Font size 12
+  1192→                 */
+  1193→                fontSize?: number
+  1194→                /**
+  1195→                 * Text highlight color (hex format)
+  1196→                 * @example 'FFFF00' // yellow
+  1197→                 */
+  1198→                highlight?: HexColor
+  1199→                /**
+  1200→                 * italic style
+  1201→                 * @default false
+  1202→                 */
+  1203→                italic?: boolean
+  1204→                /**
+  1205→                 * language
+  1206→                 * - ISO 639-1 standard language code
+  1207→                 * @default 'en-US' // english US
+  1208→                 * @example 'fr-CA' // french Canadian
+  1209→                 */
+  1210→                lang?: string
+  1211→                /**
+  1212→                 * Add a soft line-break (shift+enter) before line text content
+  1213→                 * @default false
+  1214→                 * @since v3.5.0
+  1215→                 */
+  1216→                softBreakBefore?: boolean
+  1217→                /**
+  1218→                 * tab stops
+  1219→                 * - PowerPoint: Paragraph > Tabs > Tab stop position
+  1220→                 * @example [{ position:1 }, { position:3 }] // Set first tab stop to 1 inch, set second tab stop to 3 inches
+  1221→                 */
+  1222→                tabStops?: Array<{ position: number, alignment?: 'l' | 'r' | 'ctr' | 'dec' }>
+  1223→                /**
+  1224→                 * text direction
+  1225→                 * `horz` = horizontal
+  1226→                 * `vert` = rotate 90^
+  1227→                 * `vert270` = rotate 270^
+  1228→                 * `wordArtVert` = stacked
+  1229→                 * @default 'horz'
+  1230→                 */
+  1231→                textDirection?: 'horz' | 'vert' | 'vert270' | 'wordArtVert'
+  1232→                /**
+  1233→                 * Transparency (percent)
+  1234→                 * - MS-PPT > Format Shape > Text Options > Text Fill & Outline > Text Fill > Transparency
+  1235→                 * - range: 0-100
+  1236→                 * @default 0
+  1237→                 */
+  1238→                transparency?: number
+  1239→                /**
+  1240→                 * underline properties
+  1241→                 * - PowerPoint: Font > Color & Underline > Underline Style/Underline Color
+  1242→                 * @default (none)
+  1243→                 */
+  1244→                underline?: {
+  1245→                        style?:
+  1246→                        | 'dash'
+  1247→                        | 'dashHeavy'
+  1248→                        | 'dashLong'
+  1249→                        | 'dashLongHeavy'
+  1250→                        | 'dbl'
+  1251→                        | 'dotDash'
+  1252→                        | 'dotDashHeave'
+  1253→                        | 'dotDotDash'
+  1254→                        | 'dotDotDashHeavy'
+  1255→                        | 'dotted'
+  1256→                        | 'dottedHeavy'
+  1257→                        | 'heavy'
+  1258→                        | 'none'
+  1259→                        | 'sng'
+  1260→                        | 'wavy'
+  1261→                        | 'wavyDbl'
+  1262→                        | 'wavyHeavy'
+  1263→                        color?: Color
+  1264→                }
+  1265→                /**
+  1266→                 * vertical alignment
+  1267→                 * @default 'top'
+  1268→                 */
+  1269→                valign?: VAlign
+  1270→        }
+  1271→        export interface PlaceholderProps extends PositionProps, TextBaseProps {
+  1272→                name: string
+  1273→                type: PLACEHOLDER_TYPE
+  1274→                /**
+  1275→                 * margin (points)
+  1276→                 */
+  1277→                margin?: Margin
+  1278→        }
+  1279→        export interface ObjectNameProps {
+  1280→                /**
+  1281→                 * Object name
+  1282→                 * - used instead of default "Object N" name
+  1283→                 * - PowerPoint: Home > Arrange > Selection Pane...
+  1284→                 * @since v3.10.0
+  1285→                 * @default 'Object 1'
+  1286→                 * @example 'Antenna Design 9'
+  1287→                 */
+  1288→                objectName?: string
+  1289→        }
+  1290→        export interface ThemeProps {
+  1291→                /**
+  1292→                 * Headings font face name
+  1293→                 * @example 'Arial Narrow'
+  1294→                 * @default 'Calibri Light'
+  1295→                 */
+  1296→                headFontFace?: string
+  1297→                /**
+  1298→                 * Body font face name
+  1299→                 * @example 'Arial'
+  1300→                 * @default 'Calibri'
+  1301→                 */
+  1302→                bodyFontFace?: string
+  1303→        }
+  1304→
+  1305→        // image / media ==================================================================================
+  1306→        export type MediaType = 'audio' | 'online' | 'video'
+  1307→
+  1308→        export interface ImageProps extends PositionProps, DataOrPathProps, ObjectNameProps {
+  1309→                /**
+  1310→                 * Alt Text value ("How would you describe this object and its contents to someone who is blind?")
+  1311→                 * - PowerPoint: [right-click on an image] > "Edit Alt Text..."
+  1312→                 */
+  1313→                altText?: string
+  1314→                /**
+  1315→                 * Flip horizontally?
+  1316→                 * @default false
+  1317→                 */
+  1318→                flipH?: boolean
+  1319→                /**
+  1320→                 * Flip vertical?
+  1321→                 * @default false
+  1322→                 */
+  1323→                flipV?: boolean
+  1324→                hyperlink?: HyperlinkProps
+  1325→                /**
+  1326→                 * Placeholder type
+  1327→                 * - values: 'body' | 'header' | 'footer' | 'title' | et. al.
+  1328→                 * @example 'body'
+  1329→                 * @see https://docs.microsoft.com/en-us/office/vba/api/powerpoint.ppplaceholdertype
+  1330→                 */
+  1331→                placeholder?: string
+  1332→                /**
+  1333→                 * Image rotation (degrees)
+  1334→                 * - range: -360 to 360
+  1335→                 * @default 0
+  1336→                 * @example 180 // rotate image 180 degrees
+  1337→                 */
+  1338→                rotate?: number
+  1339→                /**
+  1340→                 * Enable image rounding
+  1341→                 * @default false
+  1342→                 */
+  1343→                rounding?: boolean
+  1344→                /**
+  1345→                 * Shadow Props
+  1346→                 * - MS-PPT > Format Picture > Shadow
+  1347→                 * @example
+  1348→                 * { type: 'outer', color: '000000', opacity: 0.5, blur: 20,  offset: 20, angle: 270 }
+  1349→                 */
+  1350→                shadow?: ShadowProps
+  1351→                /**
+  1352→                 * Image sizing options
+  1353→                 */
+  1354→                sizing?: {
+  1355→                        /**
+  1356→                         * Sizing type
+  1357→                         */
+  1358→                        type: 'contain' | 'cover' | 'crop'
+  1359→                        /**
+  1360→                         * Image width
+  1361→                         * - inches or percentage
+  1362→                         * @example 10.25 // position in inches
+  1363→                         * @example '75%' // position as percentage of slide size
+  1364→                         */
+  1365→                        w: Coord
+  1366→                        /**
+  1367→                         * Image height
+  1368→                         * - inches or percentage
+  1369→                         * @example 10.25 // position in inches
+  1370→                         * @example '75%' // position as percentage of slide size
+  1371→                         */
+  1372→                        h: Coord
+  1373→                        /**
+  1374→                         * Offset from left to crop image
+  1375→                         * - `crop` only
+  1376→                         * - inches or percentage
+  1377→                         * @example 10.25 // position in inches
+  1378→                         * @example '75%' // position as percentage of slide size
+  1379→                         */
+  1380→                        x?: Coord
+  1381→                        /**
+  1382→                         * Offset from top to crop image
+  1383→                         * - `crop` only
+  1384→                         * - inches or percentage
+  1385→                         * @example 10.25 // position in inches
+  1386→                         * @example '75%' // position as percentage of slide size
+  1387→                         */
+  1388→                        y?: Coord
+  1389→                }
+  1390→                /**
+  1391→                 * Transparency (percent)
+  1392→                 * - MS-PPT > Format Picture > Picture > Picture Transparency > Transparency
+  1393→                 * - range: 0-100
+  1394→                 * @default 0
+  1395→                 * @example 25 // 25% transparent
+  1396→                 */
+  1397→                transparency?: number
+  1398→        }
+  1399→        /**
+  1400→         * Add media (audio/video) to slide
+  1401→         * @requires either `link` or `path`
+  1402→         */
+  1403→        export interface MediaProps extends PositionProps, DataOrPathProps, ObjectNameProps {
+  1404→                /**
+  1405→                 * Media type
+  1406→                 * - Use 'online' to embed a YouTube video (only supported in recent versions of PowerPoint)
+  1407→                 */
+  1408→                type: MediaType
+  1409→                /**
+  1410→                 * Cover image
+  1411→                 * @since 3.9.0
+  1412→                 * @default "play button" image, gray background
+  1413→                 */
+  1414→                cover?: string
+  1415→                /**
+  1416→                 * media file extension
+  1417→                 * - use when the media file path does not already have an extension, ex: "/folder/SomeSong"
+  1418→                 * @since 3.9.0
+  1419→                 * @default extension from file provided
+  1420→                 */
+  1421→                extn?: string
+  1422→                /**
+  1423→                 * video embed link
+  1424→                 * - works with YouTube
+  1425→                 * - other sites may not show correctly in PowerPoint
+  1426→                 * @example 'https://www.youtube.com/embed/Dph6ynRVyUc' // embed a youtube video
+  1427→                 */
+  1428→                link?: string
+  1429→                /**
+  1430→                 * full or local path
+  1431→                 * @example 'https://freesounds/simpsons/bart.mp3' // embed mp3 audio clip from server
+  1432→                 * @example '/sounds/simpsons_haha.mp3' // embed mp3 audio clip from local directory
+  1433→                 */
+  1434→                path?: string
+  1435→        }
+  1436→
+  1437→        // shapes =========================================================================================
+  1438→
+  1439→        export interface ShapeProps extends PositionProps, ObjectNameProps {
+  1440→                /**
+  1441→                 * Horizontal alignment
+  1442→                 * @default 'left'
+  1443→                 */
+  1444→                align?: HAlign
+  1445→                /**
+  1446→                 * Radius (only for pptx.shapes.PIE, pptx.shapes.ARC, pptx.shapes.BLOCK_ARC)
+  1447→                 * - In the case of pptx.shapes.BLOCK_ARC you have to setup the arcThicknessRatio
+  1448→                 * - values: [0-359, 0-359]
+  1449→                 * @since v3.4.0
+  1450→                 * @default [270, 0]
+  1451→                 */
+  1452→                angleRange?: [number, number]
+  1453→                /**
+  1454→                 * Radius (only for pptx.shapes.BLOCK_ARC)
+  1455→                 * - You have to setup the angleRange values too
+  1456→                 * - values: 0.0-1.0
+  1457→                 * @since v3.4.0
+  1458→                 * @default 0.5
+  1459→                 */
+  1460→                arcThicknessRatio?: number
+  1461→                /**
+  1462→                 * Shape fill color properties
+  1463→                 * @example { color:'FF0000' } // hex color (red)
+  1464→                 * @example { color:'0088CC', transparency:50 } // hex color, 50% transparent
+  1465→                 * @example { color:pptx.SchemeColor.accent1 } // Theme color Accent1
+  1466→                 */
+  1467→                fill?: ShapeFillProps
+  1468→                /**
+  1469→                 * Flip shape horizontally?
+  1470→                 * @default false
+  1471→                 */
+  1472→                flipH?: boolean
+  1473→                /**
+  1474→                 * Flip shape vertical?
+  1475→                 * @default false
+  1476→                 */
+  1477→                flipV?: boolean
+  1478→                /**
+  1479→                 * Add hyperlink to shape
+  1480→                 * @example hyperlink: { url: "https://github.com/gitbrent/pptxgenjs", tooltip: "Visit Homepage" },
+  1481→                 */
+  1482→                hyperlink?: HyperlinkProps
+  1483→                /**
+  1484→                 * Line options
+  1485→                 */
+  1486→                line?: ShapeLineProps
+  1487→                /**
+  1488→                 * Points (only for pptx.shapes.CUSTOM_GEOMETRY)
+  1489→                 * - type: 'arc'
+  1490→                 * - `hR` Shape Arc Height Radius
+  1491→                 * - `wR` Shape Arc Width Radius
+  1492→                 * - `stAng` Shape Arc Start Angle
+  1493→                 * - `swAng` Shape Arc Swing Angle
+  1494→                 * @see http://www.datypic.com/sc/ooxml/e-a_arcTo-1.html
+  1495→                 * @example [{ x: 0, y: 0 }, { x: 10, y: 10 }] // draw a line between those two points
+  1496→                 */
+  1497→                points?: Array<
+  1498→                        | { x: Coord, y: Coord, moveTo?: boolean }
+  1499→                        | { x: Coord, y: Coord, curve: { type: 'arc', hR: Coord, wR: Coord, stAng: number, swAng: number } }
+  1500→                        | { x: Coord, y: Coord, curve: { type: 'cubic', x1: Coord, y1: Coord, x2: Coord, y2: Coord } }
+  1501→                        | { x: Coord, y: Coord, curve: { type: 'quadratic', x1: Coord, y1: Coord } }
+  1502→                        | { close: true }
+  1503→                >
+  1504→                /**
+  1505→                 * Rounded rectangle radius (only for pptx.shapes.ROUNDED_RECTANGLE)
+  1506→                 * - values: 0.0 to 1.0
+  1507→                 * @default 0
+  1508→                 */
+  1509→                rectRadius?: number
+  1510→                /**
+  1511→                 * Rotation (degrees)
+  1512→                 * - range: -360 to 360
+  1513→                 * @default 0
+  1514→                 * @example 180 // rotate 180 degrees
+  1515→                 */
+  1516→                rotate?: number
+  1517→                /**
+  1518→                 * Shadow options
+  1519→                 * TODO: need new demo.js entry for shape shadow
+  1520→                 */
+  1521→                shadow?: ShadowProps
+  1522→
+  1523→                /**
+  1524→                 * @deprecated v3.3.0
+  1525→                 */
+  1526→                lineSize?: number
+  1527→                /**
+  1528→                 * @deprecated v3.3.0
+  1529→                 */
+  1530→                lineDash?: 'dash' | 'dashDot' | 'lgDash' | 'lgDashDot' | 'lgDashDotDot' | 'solid' | 'sysDash' | 'sysDot'
+  1531→                /**
+  1532→                 * @deprecated v3.3.0
+  1533→                 */
+  1534→                lineHead?: 'arrow' | 'diamond' | 'none' | 'oval' | 'stealth' | 'triangle'
+  1535→                /**
+  1536→                 * @deprecated v3.3.0
+  1537→                 */
+  1538→                lineTail?: 'arrow' | 'diamond' | 'none' | 'oval' | 'stealth' | 'triangle'
+  1539→                /**
+  1540→                 * Shape name (used instead of default "Shape N" name)
+  1541→                 * @deprecated v3.10.0 - use `objectName`
+  1542→                 */
+  1543→                shapeName?: string
+  1544→        }
+  1545→
+  1546→        // tables =========================================================================================
+  1547→
+  1548→        export interface TableToSlidesProps extends TableProps {
+  1549→                //_arrObjTabHeadRows?: TableRow[]
+  1550→                // _masterSlide?: SlideLayout
+  1551→
+  1552→                /**
+  1553→                 * Add an image to slide(s) created during autopaging
+  1554→                 * - `image` prop requires either `path` or `data`
+  1555→                 * - see `DataOrPathProps` for details on `image` props
+  1556→                 * - see `PositionProps` for details on `options` props
+  1557→                 */
+  1558→                addImage?: { image: DataOrPathProps, options: PositionProps }
+  1559→                /**
+  1560→                 * Add a shape to slide(s) created during autopaging
+  1561→                 */
+  1562→                addShape?: { shapeName: SHAPE_NAME, options: ShapeProps }
+  1563→                /**
+  1564→                 * Add a table to slide(s) created during autopaging
+  1565→                 */
+  1566→                addTable?: { rows: TableRow[], options: TableProps }
+  1567→                /**
+  1568→                 * Add a text object to slide(s) created during autopaging
+  1569→                 */
+  1570→                addText?: { text: TextProps[], options: TextPropsOptions }
+  1571→                /**
+  1572→                 * Whether to enable auto-paging
+  1573→                 * - auto-paging creates new slides as content overflows a slide
+  1574→                 * @default true
+  1575→                 */
+  1576→                autoPage?: boolean
+  1577→                /**
+  1578→                 * Auto-paging character weight
+  1579→                 * - adjusts how many characters are used before lines wrap
+  1580→                 * - range: -1.0 to 1.0
+  1581→                 * @see https://gitbrent.github.io/PptxGenJS/docs/api-tables.html
+  1582→                 * @default 0.0
+  1583→                 * @example 0.5 // lines are longer (increases the number of characters that can fit on a given line)
+  1584→                 */
+  1585→                autoPageCharWeight?: number
+  1586→                /**
+  1587→                 * Auto-paging line weight
+  1588→                 * - adjusts how many lines are used before slides wrap
+  1589→                 * - range: -1.0 to 1.0
+  1590→                 * @see https://gitbrent.github.io/PptxGenJS/docs/api-tables.html
+  1591→                 * @default 0.0
+  1592→                 * @example 0.5 // tables are taller (increases the number of lines that can fit on a given slide)
+  1593→                 */
+  1594→                autoPageLineWeight?: number
+  1595→                /**
+  1596→                 * Whether to repeat head row(s) on new tables created by autopaging
+  1597→                 * @since v3.3.0
+  1598→                 * @default false
+  1599→                 */
+  1600→                autoPageRepeatHeader?: boolean
+  1601→                /**
+  1602→                 * The `y` location to use on subsequent slides created by autopaging
+  1603→                 * @default (top margin of Slide)
+  1604→                 */
+  1605→                autoPageSlideStartY?: number
+  1606→                /**
+  1607→                 * Column widths (inches)
+  1608→                 */
+  1609→                colW?: number | number[]
+  1610→                /**
+  1611→                 * Master slide name
+  1612→                 * - define a master slide to have your auto-paged slides have corporate design, etc.
+  1613→                 * @see https://gitbrent.github.io/PptxGenJS/docs/masters.html
+  1614→                 */
+  1615→                masterSlideName?: string
+  1616→                /**
+  1617→                 * Slide margin
+  1618→                 * - this margin will be across all slides created by auto-paging
+  1619→                 */
+  1620→                slideMargin?: Margin
+  1621→
+  1622→                /**
+  1623→                 * @deprecated v3.3.0 - use `autoPageRepeatHeader`
+  1624→                 */
+  1625→                addHeaderToEach?: boolean
+  1626→                /**
+  1627→                 * @deprecated v3.3.0 - use `autoPageSlideStartY`
+  1628→                 */
+  1629→                newSlideStartY?: number
+  1630→        }
+  1631→        export interface TableCellProps extends TextBaseProps {
+  1632→                /**
+  1633→                 * Auto-paging character weight
+  1634→                 * - adjusts how many characters are used before lines wrap
+  1635→                 * - range: -1.0 to 1.0
+  1636→                 * @see https://gitbrent.github.io/PptxGenJS/docs/api-tables.html
+  1637→                 * @default 0.0
+  1638→                 * @example 0.5 // lines are longer (increases the number of characters that can fit on a given line)
+  1639→                 */
+  1640→                autoPageCharWeight?: number
+  1641→                /**
+  1642→                 * Auto-paging line weight
+  1643→                 * - adjusts how many lines are used before slides wrap
+  1644→                 * - range: -1.0 to 1.0
+  1645→                 * @see https://gitbrent.github.io/PptxGenJS/docs/api-tables.html
+  1646→                 * @default 0.0
+  1647→                 * @example 0.5 // tables are taller (increases the number of lines that can fit on a given slide)
+  1648→                 */
+  1649→                autoPageLineWeight?: number
+  1650→                /**
+  1651→                 * Cell border
+  1652→                 */
+  1653→                border?: BorderProps | [BorderProps, BorderProps, BorderProps, BorderProps]
+  1654→                /**
+  1655→                 * Cell colspan
+  1656→                 */
+  1657→                colspan?: number
+  1658→                /**
+  1659→                 * Fill color
+  1660→                 * @example { color:'FF0000' } // hex color (red)
+  1661→                 * @example { color:'0088CC', transparency:50 } // hex color, 50% transparent
+  1662→                 * @example { color:pptx.SchemeColor.accent1 } // theme color Accent1
+  1663→                 */
+  1664→                fill?: ShapeFillProps
+  1665→                hyperlink?: HyperlinkProps
+  1666→                /**
+  1667→                 * Cell margin (inches)
+  1668→                 * @default 0
+  1669→                 */
+  1670→                margin?: Margin
+  1671→                /**
+  1672→                 * Cell rowspan
+  1673→                 */
+  1674→                rowspan?: number
+  1675→        }
+  1676→        export interface TableProps extends PositionProps, TextBaseProps, ObjectNameProps {
+  1677→                //_arrObjTabHeadRows?: TableRow[]
+  1678→
+  1679→                /**
+  1680→                 * Whether to enable auto-paging
+  1681→                 * - auto-paging creates new slides as content overflows a slide
+  1682→                 * @default false
+  1683→                 */
+  1684→                autoPage?: boolean
+  1685→                /**
+  1686→                 * Auto-paging character weight
+  1687→                 * - adjusts how many characters are used before lines wrap
+  1688→                 * - range: -1.0 to 1.0
+  1689→                 * @see https://gitbrent.github.io/PptxGenJS/docs/api-tables.html
+  1690→                 * @default 0.0
+  1691→                 * @example 0.5 // lines are longer (increases the number of characters that can fit on a given line)
+  1692→                 */
+  1693→                autoPageCharWeight?: number
+  1694→                /**
+  1695→                 * Auto-paging line weight
+  1696→                 * - adjusts how many lines are used before slides wrap
+  1697→                 * - range: -1.0 to 1.0
+  1698→                 * @see https://gitbrent.github.io/PptxGenJS/docs/api-tables.html
+  1699→                 * @default 0.0
+  1700→                 * @example 0.5 // tables are taller (increases the number of lines that can fit on a given slide)
+  1701→                 */
+  1702→                autoPageLineWeight?: number
+  1703→                /**
+  1704→                 * Whether table header row(s) should be repeated on each new slide creating by autoPage.
+  1705→                 * Use `autoPageHeaderRows` to designate how many rows comprise the table header (1+).
+  1706→                 * @default false
+  1707→                 * @since v3.3.0
+  1708→                 */
+  1709→                autoPageRepeatHeader?: boolean
+  1710→                /**
+  1711→                 * Number of rows that comprise table headers
+  1712→                 * - required when `autoPageRepeatHeader` is set to true.
+  1713→                 * @example 2 - repeats the first two table rows on each new slide created
+  1714→                 * @default 1
+  1715→                 * @since v3.3.0
+  1716→                 */
+  1717→                autoPageHeaderRows?: number
+  1718→                /**
+  1719→                 * The `y` location to use on subsequent slides created by autopaging
+  1720→                 * @default (top margin of Slide)
+  1721→                 */
+  1722→                autoPageSlideStartY?: number
+  1723→                /**
+  1724→                 * Table border
+  1725→                 * - single value is applied to all 4 sides
+  1726→                 * - array of values in TRBL order for individual sides
+  1727→                 */
+  1728→                border?: BorderProps | [BorderProps, BorderProps, BorderProps, BorderProps]
+  1729→                /**
+  1730→                 * Width of table columns (inches)
+  1731→                 * - single value is applied to every column equally based upon `w`
+  1732→                 * - array of values in applied to each column in order
+  1733→                 * @default columns of equal width based upon `w`
+  1734→                 */
+  1735→                colW?: number | number[]
+  1736→                /**
+  1737→                 * Cell background color
+  1738→                 * @example { color:'FF0000' } // hex color (red)
+  1739→                 * @example { color:'0088CC', transparency:50 } // hex color, 50% transparent
+  1740→                 * @example { color:pptx.SchemeColor.accent1 } // theme color Accent1
+  1741→                 */
+  1742→                fill?: ShapeFillProps
+  1743→                /**
+  1744→                 * Cell margin (inches)
+  1745→                 * - affects all table cells, is superceded by cell options
+  1746→                 */
+  1747→                margin?: Margin
+  1748→                /**
+  1749→                 * Height of table rows (inches)
+  1750→                 * - single value is applied to every row equally based upon `h`
+  1751→                 * - array of values in applied to each row in order
+  1752→                 * @default rows of equal height based upon `h`
+  1753→                 */
+  1754→                rowH?: number | number[]
+  1755→                /**
+  1756→                 * DEV TOOL: Verbose Mode (to console)
+  1757→                 * - tell the library to provide an almost ridiculous amount of detail during auto-paging calculations
+  1758→                 * @default false // obviously
+  1759→                 */
+  1760→                verbose?: boolean // Undocumented; shows verbose output
+  1761→
+  1762→                /**
+  1763→                 * @deprecated v3.3.0 - use `autoPageSlideStartY`
+  1764→                 */
+  1765→                newSlideStartY?: number
+  1766→        }
+  1767→        export interface TableCell {
+  1768→                text?: string | TableCell[]
+  1769→                options?: TableCellProps
+  1770→        }
+  1771→        export interface TableRowSlide {
+  1772→                rows: TableRow[]
+  1773→        }
+  1774→        export type TableRow = TableCell[]
+  1775→
+  1776→        // text ===========================================================================================
+  1777→        export interface TextGlowProps {
+  1778→                /**
+  1779→                 * Border color (hex format)
+  1780→                 * @example 'FF3399'
+  1781→                 */
+  1782→                color?: HexColor
+  1783→                /**
+  1784→                 * opacity (0.0 - 1.0)
+  1785→                 * @example 0.5
+  1786→                 * 50% opaque
+  1787→                 */
+  1788→                opacity: number
+  1789→                /**
+  1790→                 * size (points)
+  1791→                 */
+  1792→                size: number
+  1793→        }
+  1794→
+  1795→        export interface TextPropsOptions extends PositionProps, DataOrPathProps, TextBaseProps, ObjectNameProps {
+  1796→                baseline?: number
+  1797→                /**
+  1798→                 * Character spacing
+  1799→                 */
+  1800→                charSpacing?: number
+  1801→                /**
+  1802→                 * Text fit options
+  1803→                 *
+  1804→                 * MS-PPT > Format Shape > Shape Options > Text Box > "[unlabeled group]": [3 options below]
+  1805→                 * - 'none' = Do not Autofit
+  1806→                 * - 'shrink' = Shrink text on overflow
+  1807→                 * - 'resize' = Resize shape to fit text
+  1808→                 *
+  1809→                 * **Note** 'shrink' and 'resize' only take effect after editing text/resize shape.
+  1810→                 * Both PowerPoint and Word dynamically calculate a scaling factor and apply it when edit/resize occurs.
+  1811→                 *
+  1812→                 * There is no way for this library to trigger that behavior, sorry.
+  1813→                 * @since v3.3.0
+  1814→                 * @default "none"
+  1815→                 */
+  1816→                fit?: 'none' | 'shrink' | 'resize'
+  1817→                /**
+  1818→                 * Shape fill
+  1819→                 * @example { color:'FF0000' } // hex color (red)
+  1820→                 * @example { color:'0088CC', transparency:50 } // hex color, 50% transparent
+  1821→                 * @example { color:pptx.SchemeColor.accent1 } // theme color Accent1
+  1822→                 */
+  1823→                fill?: ShapeFillProps
+  1824→                /**
+  1825→                 * Flip shape horizontally?
+  1826→                 * @default false
+  1827→                 */
+  1828→                flipH?: boolean
+  1829→                /**
+  1830→                 * Flip shape vertical?
+  1831→                 * @default false
+  1832→                 */
+  1833→                flipV?: boolean
+  1834→                glow?: TextGlowProps
+  1835→                hyperlink?: HyperlinkProps
+  1836→                indentLevel?: number
+  1837→                isTextBox?: boolean
+  1838→                line?: ShapeLineProps
+  1839→                /**
+  1840→                 * Line spacing (pt)
+  1841→                 * - PowerPoint: Paragraph > Indents and Spacing > Line Spacing: > "Exactly"
+  1842→                 * @example 28 // 28pt
+  1843→                 */
+  1844→                lineSpacing?: number
+  1845→                /**
+  1846→                 * line spacing multiple (percent)
+  1847→                 * - range: 0.0-9.99
+  1848→                 * - PowerPoint: Paragraph > Indents and Spacing > Line Spacing: > "Multiple"
+  1849→                 * @example 1.5 // 1.5X line spacing
+  1850→                 * @since v3.5.0
+  1851→                 */
+  1852→                lineSpacingMultiple?: number
+  1853→                // TODO: [20220219] powerpoint uses inches but library has always been pt... @future @deprecated - update in v4.0? [range: 0.0-22.0]
+  1854→                /**
+  1855→                 * Margin (points)
+  1856→                 * - PowerPoint: Format Shape > Shape Options > Size & Properties > Text Box > Left/Right/Top/Bottom margin
+  1857→                 * @default "Normal" margin in PowerPoint [3.5, 7.0, 3.5, 7.0] // (this library sets no value, but PowerPoint defaults to "Normal" [0.05", 0.1", 0.05", 0.1"])
+  1858→                 * @example 0 // Top/Right/Bottom/Left margin 0 [0.0" in powerpoint]
+  1859→                 * @example 10 // Top/Right/Bottom/Left margin 10 [0.14" in powerpoint]
+  1860→                 * @example [10,5,10,5] // Top margin 10, Right margin 5, Bottom margin 10, Left margin 5
+  1861→                 */
+  1862→                margin?: Margin
+  1863→                outline?: { color: Color, size: number }
+  1864→                paraSpaceAfter?: number
+  1865→                paraSpaceBefore?: number
+  1866→                placeholder?: string
+  1867→                /**
+  1868→                 * Rounded rectangle radius (only for pptx.shapes.ROUNDED_RECTANGLE)
+  1869→                 * - values: 0.0 to 1.0
+  1870→                 * @default 0
+  1871→                 */
+  1872→                rectRadius?: number
+  1873→                /**
+  1874→                 * Rotation (degrees)
+  1875→                 * - range: -360 to 360
+  1876→                 * @default 0
+  1877→                 * @example 180 // rotate 180 degrees
+  1878→                 */
+  1879→                rotate?: number
+  1880→                /**
+  1881→                 * Whether to enable right-to-left mode
+  1882→                 * @default false
+  1883→                 */
+  1884→                rtlMode?: boolean
+  1885→                shadow?: ShadowProps
+  1886→                shape?: SHAPE_NAME
+  1887→                strike?: boolean | 'dblStrike' | 'sngStrike'
+  1888→                subscript?: boolean
+  1889→                superscript?: boolean
+  1890→                /**
+  1891→                 * Vertical alignment
+  1892→                 * @default middle
+  1893→                 */
+  1894→                valign?: VAlign
+  1895→                vert?: 'eaVert' | 'horz' | 'mongolianVert' | 'vert' | 'vert270' | 'wordArtVert' | 'wordArtVertRtl'
+  1896→                /**
+  1897→                 * Text wrap
+  1898→                 * @since v3.3.0
+  1899→                 * @default true
+  1900→                 */
+  1901→                wrap?: boolean
+  1902→
+  1903→                /**
+  1904→                 * Whether "Fit to Shape?" is enabled
+  1905→                 * @deprecated v3.3.0 - use `fit`
+  1906→                 */
+  1907→                autoFit?: boolean
+  1908→                /**
+  1909→                 * Whather "Shrink Text on Overflow?" is enabled
+  1910→                 * @deprecated v3.3.0 - use `fit`
+  1911→                 */
+  1912→                shrinkText?: boolean
+  1913→                /**
+  1914→                 * Inset
+  1915→                 * @deprecated v3.10.0 - use `margin`
+  1916→                 */
+  1917→                inset?: number
+  1918→                /**
+  1919→                 * Dash type
+  1920→                 * @deprecated v3.3.0 - use `line.dashType`
+  1921→                 */
+  1922→                lineDash?: 'solid' | 'dash' | 'dashDot' | 'lgDash' | 'lgDashDot' | 'lgDashDotDot' | 'sysDash' | 'sysDot'
+  1923→                /**
+  1924→                 * @deprecated v3.3.0 - use `line.beginArrowType`
+  1925→                 */
+  1926→                lineHead?: 'none' | 'arrow' | 'diamond' | 'oval' | 'stealth' | 'triangle'
+  1927→                /**
+  1928→                 * @deprecated v3.3.0 - use `line.width`
+  1929→                 */
+  1930→                lineSize?: number
+  1931→                /**
+  1932→                 * @deprecated v3.3.0 - use `line.endArrowType`
+  1933→                 */
+  1934→                lineTail?: 'none' | 'arrow' | 'diamond' | 'oval' | 'stealth' | 'triangle'
+  1935→        }
+  1936→        export interface TextProps {
+  1937→                text?: string
+  1938→                options?: TextPropsOptions
+  1939→        }
+  1940→
+  1941→        // charts =========================================================================================
+  1942→        // FUTURE: BREAKING-CHANGE: (soln: use `OptsDataLabelPosition|string` until 3.5/4.0)
+  1943→        /*
+  1944→        export interface OptsDataLabelPosition {
+  1945→                pie: 'ctr' | 'inEnd' | 'outEnd' | 'bestFit'
+  1946→                scatter: 'b' | 'ctr' | 'l' | 'r' | 't'
+  1947→                // TODO: add all othere chart types
+  1948→        }
+  1949→        */
+  1950→
+  1951→        export type ChartAxisTickMark = 'none' | 'inside' | 'outside' | 'cross'
+  1952→        export type ChartLineCap = 'flat' | 'round' | 'square'
+  1953→
+  1954→        export interface OptsChartData {
+  1955→                //_dataIndex?: number
+  1956→
+  1957→                /**
+  1958→                 * category labels
+  1959→                 * @example ['Year 2000', 'Year 2010', 'Year 2020'] // single-level category axes labels
+  1960→                 * @example [['Year 2000', 'Year 2010', 'Year 2020'], ['Decades', '', '']] // multi-level category axes labels
+  1961→                 * @since `labels` string[][] type added v3.11.0
+  1962→                 */
+  1963→                labels?: string[] | string[][]
+  1964→                /**
+  1965→                 * series name
+  1966→                 * @example 'Locations'
+  1967→                 */
+  1968→                name?: string
+  1969→                /**
+  1970→                 * bubble sizes
+  1971→                 * @example [5, 1, 5, 1]
+  1972→                 */
+  1973→                sizes?: number[]
+  1974→                /**
+  1975→                 * category values
+  1976→                 * @example [2000, 2010, 2020]
+  1977→                 */
+  1978→                values?: number[]
+  1979→                /**
+  1980→                 * Override `chartColors`
+  1981→                 */
+  1982→                //color?: string // TODO: WIP: (Pull #727)
+  1983→        }
+  1984→        export interface OptsChartGridLine {
+  1985→                /**
+  1986→                 * MS-PPT > Chart format > Format Major Gridlines > Line > Cap type
+  1987→                 * - line cap type
+  1988→                 * @default flat
+  1989→                 */
+  1990→                cap?: ChartLineCap
+  1991→                /**
+  1992→                 * Gridline color (hex)
+  1993→                 * @example 'FF3399'
+  1994→                 */
+  1995→                color?: HexColor
+  1996→                /**
+  1997→                 * Gridline size (points)
+  1998→                 */
+  1999→                size?: number
+  2000→                /**
+
+[showing lines 1-2000 of 2680; use offset=2001 with limit to continue reading]

@@ -1,0 +1,899 @@
+     1→import type { DocumentInitParameters } from 'pdfjs-dist/types/src/display/api.js';
+     2→import type { ImageKind } from 'pdfjs-dist/legacy/build/pdf.mjs';
+     3→import { Metadata } from 'pdfjs-dist/types/src/display/metadata.js';
+     4→import type { PDFDataRangeTransport } from 'pdfjs-dist/types/src/display/api.js';
+     5→import type { PDFWorker } from 'pdfjs-dist/types/src/display/api.js';
+     6→import { VerbosityLevel } from 'pdfjs-dist/legacy/build/pdf.mjs';
+     7→
+     8→/**
+     9→ * Error used to indicate that an operation was aborted (for example by an AbortSignal).
+    10→ *
+    11→ * @public
+    12→ */
+    13→export declare class AbortException extends Error {
+    14→    /**
+    15→     * Create a new AbortException.
+    16→     * @param message - Optional error message.
+    17→     * @param cause - Optional underlying cause.
+    18→     */
+    19→    constructor(message?: string, cause?: unknown);
+    20→}
+    21→
+    22→/**
+    23→ * @public
+    24→ * Consolidated date information gathered from different PDF sources.
+    25→ * The PDF 'Info' dictionary contains CreationDate / ModDate and
+    26→ * the XMP/XAP metadata can contain several timestamps as well. This
+    27→ * structure collects those values (if present) as JavaScript Date objects
+    28→ * or null when the property exists but cannot be parsed.
+    29→ */
+    30→export declare type DateNode = {
+    31→    CreationDate?: Date | null;
+    32→    ModDate?: Date | null;
+    33→    XmpCreateDate?: Date | null;
+    34→    XmpModifyDate?: Date | null;
+    35→    XmpMetadataDate?: Date | null;
+    36→    XapCreateDate?: Date | null;
+    37→    XapModifyDate?: Date | null;
+    38→    XapMetadataDate?: Date | null;
+    39→};
+    40→
+    41→/**
+    42→ * @public
+    43→ * EmbeddedImage
+    44→ * - Normalized representation of an embedded image extracted from the PDF.
+    45→ * - `data`: Raw image bytes (e.g. PNG/JPEG) as Uint8Array. Use this for file writing or binary processing.
+    46→ * - `dataUrl`: Optional data URL (e.g. "data:image/png;base64,...") for directly embedding in <img> src.
+    47→ *   Storing both lets consumers choose the most convenient form; consider omitting one to save memory.
+    48→ * - `name`: Resource name for the image.
+    49→ * - `width` / `height`: Dimensions in pixels.
+    50→ * - `kind`: ImageKindValue from indicating the pixel format (e.g. GRAYSCALE_1BPP / RGB_24BPP / RGBA_32BPP).
+    51→ */
+    52→export declare interface EmbeddedImage {
+    53→    data: Uint8Array;
+    54→    dataUrl: string;
+    55→    name: string;
+    56→    width: number;
+    57→    height: number;
+    58→    kind: ImageKindValue;
+    59→}
+    60→
+    61→/**
+    62→ * Error thrown when the PDF structure/contents are malformed and cannot be parsed.
+    63→ *
+    64→ * This is raised for low-level format problems detected while reading PDF objects.
+    65→ * Errors caused during parsing PDF data.
+    66→ *
+    67→ * @public
+    68→ */
+    69→export declare class FormatError extends Error {
+    70→    /**
+    71→     * Create a new FormatError.
+    72→     * @param message - Optional message describing the format problem.
+    73→     * @param cause - Optional underlying cause.
+    74→     */
+    75→    constructor(message?: string, cause?: unknown);
+    76→}
+    77→
+    78→/**
+    79→ * Normalize arbitrary thrown values into an Error instance used by the library.
+    80→ *
+    81→ * Known Error instances with specific names are mapped to the library's
+    82→ * typed exceptions in order to preserve type information and any additional
+    83→ * fields (for example `details`, `status`, etc.). If the value is not an
+    84→ * Error it is converted to a generic Error containing the stringified value.
+    85→ *
+    86→ * @public
+    87→ * @param error - The thrown value to normalize.
+    88→ * @returns An Error instance representing the provided value.
+    89→ */
+    90→export declare function getException(error: unknown): Error;
+    91→
+    92→/**
+    93→ * @public
+    94→ * ImageKindKey
+    95→ * - Represents the keys of the ImageKind enum (e.g. "GRAYSCALE_1BPP", "RGB_24BPP", "RGBA_32BPP").
+    96→ */
+    97→export declare type ImageKindKey = keyof typeof ImageKind;
+    98→
+    99→/**
+   100→ * @public
+   101→ * ImageKindValue
+   102→ * - Represents the numeric values of the ImageKind enum (e.g. 1, 2, 3).
+   103→ */
+   104→export declare type ImageKindValue = (typeof ImageKind)[ImageKindKey];
+   105→
+   106→/**
+   107→ * @public
+   108→ * ImageResult
+   109→ * Helper container for extracted images grouped per page.
+   110→ */
+   111→export declare class ImageResult {
+   112→    pages: Array<PageImages>;
+   113→    total: number;
+   114→    getPageImage(num: number, name: string): EmbeddedImage | null;
+   115→    constructor(total: number);
+   116→}
+   117→
+   118→/**
+   119→ * @public
+   120→ * Aggregated information about a PDF document returned by getInfo().
+   121→ * The object contains high-level metadata, outline/bookmark structure,
+   122→ * per-page extracted hyperlinks and utility helpers for parsing dates.
+   123→ */
+   124→export declare class InfoResult {
+   125→    total: number;
+   126→    /**
+   127→     * The PDF 'Info' dictionary. Typical fields include title, author, subject,
+   128→     * Creator, Producer and Creation/Modification dates. The exact structure is
+   129→     * determined by the PDF and as returned by PDF.js.
+   130→     */
+   131→    info?: any;
+   132→    metadata?: Metadata;
+   133→    /**
+   134→     * An array of document fingerprint strings provided by PDF.js. Useful
+   135→     * for caching, de-duplication or identifying a document across runs.
+   136→     */
+   137→    fingerprints?: Array<string | null>;
+   138→    /**
+   139→     * Permission flags for the document as returned by PDF.js (or null).
+   140→     * These flags indicate capabilities such as printing, copying and
+   141→     * other restrictions imposed by the PDF security settings.
+   142→     */
+   143→    permission?: number[] | null;
+   144→    /**
+   145→     * Optional document outline (bookmarks). When present this is the
+   146→     * hierarchical navigation structure which viewers use for quick access.
+   147→     */
+   148→    outline?: Array<OutlineNode> | null;
+   149→    pages: Array<PageLinkResult>;
+   150→    /**
+   151→     * Collects dates from different sources (Info dictionary and XMP/XAP metadata)
+   152→     * and returns them as a DateNode where available. This helps callers compare
+   153→     * and choose the most relevant timestamp (for example a creation date vs XMP date).
+   154→     */
+   155→    getDateNode(): DateNode;
+   156→    /**
+   157→     * Try to parse an ISO-8601 date string from XMP/XAP metadata. If the
+   158→     * value is falsy or cannot be parsed, undefined is returned to indicate
+   159→     * absence or unparsable input.
+   160→     */
+   161→    private parseISODateString;
+   162→    constructor(total: number);
+   163→}
+   164→
+   165→/**
+   166→ * Error thrown when the parsed data is not a valid PDF document.
+   167→ *
+   168→ * Use this exception to signal that the input cannot be interpreted as a PDF
+   169→ * (corrupt file, invalid header, etc.).
+   170→ *
+   171→ * @public
+   172→ */
+   173→export declare class InvalidPDFException extends Error {
+   174→    /**
+   175→     * Create a new InvalidPDFException.
+   176→     * @param message - Optional error message.
+   177→     * @param cause - Optional underlying cause (preserved on modern runtimes).
+   178→     */
+   179→    constructor(message?: string, cause?: unknown);
+   180→}
+   181→
+   182→export declare class Line extends Shape {
+   183→    from: Point;
+   184→    to: Point;
+   185→    direction: LineDirection;
+   186→    length: number;
+   187→    intersections: Array<Point>;
+   188→    gaps: Array<Line>;
+   189→    constructor(from: Point, to: Point);
+   190→    private init;
+   191→    private _valid;
+   192→    get valid(): boolean;
+   193→    get normalized(): Line;
+   194→    addGap(line: Line): void;
+   195→    containsPoint(p: Point): boolean;
+   196→    addIntersectionPoint(point: Point): void;
+   197→    intersection(line: Line): Point | undefined;
+   198→    transform(matrix: Array<number>): this;
+   199→}
+   200→
+   201→export declare enum LineDirection {
+   202→    None = 0,
+   203→    Horizontal = 1,
+   204→    Vertical = 2
+   205→}
+   206→
+   207→export declare class LineStore {
+   208→    hLines: Array<Line>;
+   209→    vLines: Array<Line>;
+   210→    add(line: Line): void;
+   211→    addRectangle(rect: Rectangle): void;
+   212→    getTableData(): Array<TableData>;
+   213→    getTables(): Array<Table>;
+   214→    normalize(): void;
+   215→    normalizeHorizontal(): void;
+   216→    normalizeVertical(): void;
+   217→    private fillTable;
+   218→    private tryFill;
+   219→    private margeHorizontalLines;
+   220→    private margeVerticalLines;
+   221→}
+   222→
+   223→/**
+   224→ * @public
+   225→ * LoadParameters
+   226→ * PDF loading parameters.
+   227→ */
+   228→export declare interface LoadParameters extends DocumentInitParameters {
+   229→    /**
+   230→     * The URL of the PDF.
+   231→     * Default: `undefined`.
+   232→     */
+   233→    url?: string | URL | undefined;
+   234→    /**
+   235→     * Binary PDF data.
+   236→     * Use TypedArrays (e.g., `Uint8Array`) to improve memory usage. If PDF data is BASE64-encoded, use `atob()` to convert it to a binary string first.
+   237→     * **NOTE**: If TypedArrays are used, they will generally be transferred to the worker thread, reducing main-thread memory usage but taking ownership of the array.
+   238→     * Default: `undefined`.
+   239→     */
+   240→    data?: string | number[] | ArrayBuffer | TypedArray | undefined;
+   241→    /**
+   242→     * Basic authentication headers.
+   243→     * Default: `undefined`.
+   244→     */
+   245→    httpHeaders?: Object | undefined;
+   246→    /**
+   247→     * Indicates whether cross-site Access-Control requests should be made using credentials (e.g., cookies or auth headers).
+   248→     * Default: `false`.
+   249→     */
+   250→    withCredentials?: boolean | undefined;
+   251→    /**
+   252→     * For decrypting password-protected PDFs.
+   253→     * Default: `undefined`.
+   254→     */
+   255→    password?: string | undefined;
+   256→    /**
+   257→     * The PDF file length. Used for progress reports and range requests.
+   258→     * Default: `undefined`.
+   259→     */
+   260→    length?: number | undefined;
+   261→    /**
+   262→     * Allows using a custom range transport implementation.
+   263→     * Default: `undefined`.
+   264→     */
+   265→    range?: PDFDataRangeTransport | undefined;
+   266→    /**
+   267→     * Maximum number of bytes fetched per range request.
+   268→     * Default: `65536` (`2^16`).
+   269→     */
+   270→    rangeChunkSize?: number | undefined;
+   271→    /**
+   272→     * The worker used for loading and parsing PDF data.
+   273→     * Default: `undefined`.
+   274→     */
+   275→    worker?: PDFWorker | undefined;
+   276→    /**
+   277→     * Controls logging level; use constants from `VerbosityLevel`.
+   278→     * Default: `undefined`.
+   279→     */
+   280→    verbosity?: number | undefined;
+   281→    /**
+   282→     * Base URL of the document, used to resolve relative URLs in annotations and outline items.
+   283→     * Default: `undefined`.
+   284→     */
+   285→    docBaseUrl?: string | undefined;
+   286→    /**
+   287→     * URL where predefined Adobe CMaps are located. Include trailing slash.
+   288→     * Default: `undefined`.
+   289→     */
+   290→    cMapUrl?: string | undefined;
+   291→    /**
+   292→     * Specifies if Adobe CMaps are binary-packed.
+   293→     * Default: `true`.
+   294→     */
+   295→    cMapPacked?: boolean | undefined;
+   296→    /**
+   297→     * Factory for reading built-in CMap files.
+   298→     * Default: `{DOMCMapReaderFactory}`.
+   299→     */
+   300→    CMapReaderFactory?: Object | undefined;
+   301→    /**
+   302→     * URL where predefined ICC profiles are located. Include trailing slash.
+   303→     * Default: `undefined`.
+   304→     */
+   305→    iccUrl?: string | undefined;
+   306→    /**
+   307→     * If `true`, non-embedded fonts fall back to system fonts.
+   308→     * Default: `true` in browsers, `false` in Node.js (unless `disableFontFace === true`, then always `false`).
+   309→     */
+   310→    useSystemFonts?: boolean | undefined;
+   311→    /**
+   312→     * URL for standard font files. Include trailing slash.
+   313→     * Default: `undefined`.
+   314→     */
+   315→    standardFontDataUrl?: string | undefined;
+   316→    /**
+   317→     * Factory for reading standard font files.
+   318→     * Default: `{DOMStandardFontDataFactory}`.
+   319→     */
+   320→    StandardFontDataFactory?: Object | undefined;
+   321→    /**
+   322→     * URL for WebAssembly files. Include trailing slash.
+   323→     * Default: `undefined`.
+   324→     */
+   325→    wasmUrl?: string | undefined;
+   326→    /**
+   327→     * Factory for reading WASM files.
+   328→     * Default: `{DOMWasmFactory}`.
+   329→     */
+   330→    WasmFactory?: Object | undefined;
+   331→    /**
+   332→     * Enable `fetch()` in worker thread for CMap/font/WASM files. If `true`, factory options are ignored.
+   333→     * Default: `true` in browsers, `false` in Node.js.
+   334→     */
+   335→    useWorkerFetch?: boolean | undefined;
+   336→    /**
+   337→     * Attempt to use WebAssembly for better performance (e.g., image decoding).
+   338→     * Default: `true`.
+   339→     */
+   340→    useWasm?: boolean | undefined;
+   341→    /**
+   342→     * Reject promises (e.g., `getTextContent`) on parse errors instead of recovering partially.
+   343→     * Default: `false`.
+   344→     */
+   345→    stopAtErrors?: boolean | undefined;
+   346→    /**
+   347→     * Max image size in total pixels (`width * height`). Use `-1` for no limit.
+   348→     * Default: `-1`.
+   349→     */
+   350→    maxImageSize?: number | undefined;
+   351→    /**
+   352→     * Whether evaluating strings as JS is allowed (for PDF function performance).
+   353→     * Default: `true`.
+   354→     */
+   355→    isEvalSupported?: boolean | undefined;
+   356→    /**
+   357→     * Whether `OffscreenCanvas` can be used in worker.
+   358→     * Default: `true` in browsers, `false` in Node.js.
+   359→     */
+   360→    isOffscreenCanvasSupported?: boolean | undefined;
+   361→    /**
+   362→     * Whether `ImageDecoder` can be used in worker.
+   363→     * Default: `true` in browsers, `false` in Node.js.
+   364→     * **NOTE**: Temporarily disabled in Chromium due to bugs:
+   365→     * - Crashes with BMP decoder on huge images ([issue 374807001](https://issues.chromium.org/issues/374807001))
+   366→     * - Broken JPEGs with custom color profiles ([issue 378869810](https://issues.chromium.org/issues/378869810))
+   367→     */
+   368→    isImageDecoderSupported?: boolean | undefined;
+   369→    /**
+   370→     * Used to determine when to resize images (via `OffscreenCanvas`). Use `-1` to use a slower fallback algorithm.
+   371→     * Default: `undefined`.
+   372→     */
+   373→    canvasMaxAreaInBytes?: number | undefined;
+   374→    /**
+   375→     * Disable `@font-face`/Font Loading API; use built-in glyph renderer instead.
+   376→     * Default: `false` in browsers, `true` in Node.js.
+   377→     */
+   378→    disableFontFace?: boolean | undefined;
+   379→    /**
+   380→     * Include extra (non-rendering) font properties when exporting font data from worker. Increases memory usage.
+   381→     * Default: `false`.
+   382→     */
+   383→    fontExtraProperties?: boolean | undefined;
+   384→    /**
+   385→     * Render XFA forms if present.
+   386→     * Default: `false`.
+   387→     */
+   388→    enableXfa?: boolean | undefined;
+   389→    /**
+   390→     * Explicit document context for creating elements and loading resources. Defaults to current document.
+   391→     * Default: `undefined`.
+   392→     */
+   393→    ownerDocument?: HTMLDocument | undefined;
+   394→    /**
+   395→     * Disable range requests for PDF loading.
+   396→     * Default: `false`.
+   397→     */
+   398→    disableRange?: boolean | undefined;
+   399→    /**
+   400→     * Disable streaming PDF data.
+   401→     * Default: `false`.
+   402→     */
+   403→    disableStream?: boolean | undefined;
+   404→    /**
+   405→     * Disable pre-fetching of PDF data. Requires `disableStream: true` to work fully.
+   406→     * Default: `false`.
+   407→     */
+   408→    disableAutoFetch?: boolean | undefined;
+   409→    /**
+   410→     * Enable debugging hooks (see `web/debugger.js`).
+   411→     * Default: `false`.
+   412→     */
+   413→    pdfBug?: boolean | undefined;
+   414→    /**
+   415→     * Factory for creating canvases.
+   416→     * Default: `{DOMCanvasFactory}`.
+   417→     */
+   418→    CanvasFactory?: Object | undefined;
+   419→    /**
+   420→     * Factory for creating SVG filters during rendering.
+   421→     * Default: `{DOMFilterFactory}`.
+   422→     */
+   423→    FilterFactory?: Object | undefined;
+   424→    /**
+   425→     * Enable hardware acceleration for rendering.
+   426→     * Default: `false`.
+   427→     */
+   428→    enableHWA?: boolean | undefined;
+   429→}
+   430→
+   431→export { Metadata }
+   432→
+   433→/**
+   434→ * @public
+   435→ * Node representing a single item in the PDF outline (bookmarks).
+   436→ * This mirrors the structure returned by PDF.js' getOutline() API.
+   437→ */
+   438→export declare interface OutlineNode {
+   439→    title: string;
+   440→    bold: boolean;
+   441→    italic: boolean;
+   442→    color: Uint8ClampedArray;
+   443→    dest: string | Array<any> | null;
+   444→    url: string | null;
+   445→    unsafeUrl?: string;
+   446→    newWindow?: boolean;
+   447→    count?: number;
+   448→    items: Array<any>;
+   449→}
+   450→
+   451→/**
+   452→ * @public
+   453→ * PageImages
+   454→ * - Represents all embedded images found on a single PDF page.
+   455→ * - pageNumber: 1-based page index.
+   456→ * - images: Array of EmbeddedImage objects for this page.
+   457→ */
+   458→export declare interface PageImages {
+   459→    pageNumber: number;
+   460→    images: EmbeddedImage[];
+   461→}
+   462→
+   463→/**
+   464→ * @public
+   465→ * Per-page link extraction result.
+   466→ * - pageNumber: the physical page index (1-based) within the PDF document.
+   467→ * - pageLabel: optional printed page label shown by PDF viewers (e.g. "iii", "1", "A-1");
+   468→ *              this can differ from the physical page number and may be undefined
+   469→ *              when the document does not provide labels.
+   470→ * - links: array of text-&gt;URL mappings that were found/overlaid on the page.
+   471→ * - width/height: page dimensions in PDF units for the viewport used.
+   472→ */
+   473→export declare type PageLinkResult = {
+   474→    pageNumber: number;
+   475→    pageLabel?: string | null;
+   476→    links: Array<{
+   477→        text: string;
+   478→        url: string;
+   479→    }>;
+   480→    width: number;
+   481→    height: number;
+   482→};
+   483→
+   484→/**
+   485→ * @public
+   486→ * PageTableResult
+   487→ */
+   488→export declare interface PageTableResult {
+   489→    num: number;
+   490→    tables: TableArray[];
+   491→}
+   492→
+   493→/**
+   494→ * @public
+   495→ * PageTextResult
+   496→ */
+   497→export declare interface PageTextResult {
+   498→    num: number;
+   499→    text: string;
+   500→}
+   501→
+   502→/**
+   503→ * @public
+   504→ * ParseParameters
+   505→ * Options to control parsing behavior and output formatting.
+   506→ */
+   507→export declare interface ParseParameters {
+   508→    /**
+   509→     * Array of page numbers to parse.
+   510→     * When provided, only these pages will be parsed and returned in the same order.
+   511→     * Example: [1, 3, 5]. Parse only one page: [7].
+   512→     * Default: `undefined`.
+   513→     */
+   514→    partial?: Array<number>;
+   515→    /**
+   516→     * Parse the first N pages (pages 1..N).
+   517→     * Ignored when `partial` is provided. If both `first` and `last` are set, they define
+   518→     * an explicit inclusive page range (first..last) and this "first N" semantics is ignored.
+   519→     * Default: `undefined`.
+   520→     */
+   521→    first?: number;
+   522→    /**
+   523→     * Parse the last N pages (pages total-N+1..total).
+   524→     * Ignored when `partial` is provided. If both `first` and `last` are set, they define
+   525→     * an explicit inclusive page range (first..last) and this "last N" semantics is ignored.
+   526→     * Default: `undefined`.
+   527→     */
+   528→    last?: number;
+   529→    /**
+   530→     * Collect per-page metadata such as embedded links, title, pageLabel, and dimensions;
+   531→     * ISBN, DOI, abstract, and references are work in progress when getInfo() is used.
+   532→     * Default: `false`.
+   533→     */
+   534→    parsePageInfo?: boolean;
+   535→    /**
+   536→     * Attempt to detect and include hyperlink annotations (e.g. URLs) associated with text.
+   537→     * Detected links are formatted as Markdown inline links (for example: [text](https://example.com)).
+   538→     * Default: `false`.
+   539→     */
+   540→    parseHyperlinks?: boolean;
+   541→    /**
+   542→     * Enforce logical line breaks by inserting a newline when the vertical distance
+   543→     * between text items exceeds `lineThreshold`.
+   544→     * Useful to preserve paragraph/line structure when text items are emitted as separate segments.
+   545→     * Default: `true`.
+   546→     */
+   547→    lineEnforce?: boolean;
+   548→    /**
+   549→     * Threshold to decide whether nearby text items belong to different lines.
+   550→     * Larger values make the parser more likely to start a new line between items.
+   551→     * Default: `4.6`.
+   552→     */
+   553→    lineThreshold?: number;
+   554→    /**
+   555→     * String inserted between text items on the same line when a sufficiently large horizontal gap is detected.
+   556→     * Typically used to emulate a cell/column separator (for example, "\\t" for tabs).
+   557→     * Default: `'\t'`.
+   558→     */
+   559→    cellSeparator?: string;
+   560→    /**
+   561→     * Horizontal distance threshold to decide when two text items on the same baseline should be treated as separate cells.
+   562→     * Larger value produces fewer (wider) cells; smaller value creates more cell breaks.
+   563→     * Default: `7`.
+   564→     */
+   565→    cellThreshold?: number;
+   566→    /**
+   567→     * Optional string appended at the end of each page's extracted text to mark page boundaries.
+   568→     * Supports placeholders `page_number` and `total_number` which are substituted accordingly.
+   569→     * If omitted or empty, no page boundary marker is added.
+   570→     * Default: `'\n-- page_number of total_number --'`.
+   571→     */
+   572→    pageJoiner?: string;
+   573→    /**
+   574→     * Optional string used to join text items when returning a page's text.
+   575→     * If provided, this value is used instead of the default empty-string joining behavior.
+   576→     * Default: `undefined`.
+   577→     */
+   578→    itemJoiner?: string;
+   579→    /**
+   580→     * Minimum image dimension (in pixels) for width or height.
+   581→     * When set, images where width OR height are below or equal this value will be ignored by `getImage()`.
+   582→     * Useful for excluding tiny decorative or tracking images.
+   583→     * Default: `80`.
+   584→     * Disable: `0`.
+   585→     */
+   586→    imageThreshold?: number;
+   587→    /**
+   588→     * Screenshot scale factor: use 1 for the original size, 1.5 for a 50% larger image, etc.
+   589→     * Default: `1`.
+   590→     */
+   591→    scale?: number;
+   592→    /**
+   593→     * Desired screenshot width in pixels.
+   594→     * When set, the scale option is ignored.
+   595→     * Default: `undefined`.
+   596→     */
+   597→    desiredWidth?: number;
+   598→    /**
+   599→     * Applies to both getImage() and getScreenshot(): include the image as a base64 data URL string.
+   600→     * Default: `true`.
+   601→     */
+   602→    imageDataUrl?: boolean;
+   603→    /**
+   604→     * Applies to both getImage() and getScreenshot(): include the image as a binary buffer.
+   605→     * Default: `true`.
+   606→     */
+   607→    imageBuffer?: boolean;
+   608→    /**
+   609→     * Include marked content items in the items array of TextContent to capture PDF "marked content".
+   610→     * Enables tags (MCID, role/props) and structural/accessibility information useful for mapping text ↔ structure.
+   611→     * For plain text extraction it's usually false (trade-off: larger output).
+   612→     * Default: `false`.
+   613→     */
+   614→    includeMarkedContent?: boolean;
+   615→    /**
+   616→     * When true, text normalization is NOT performed in the worker thread.
+   617→     * For plain text extraction, normalizing in the worker (false) is usually recommended.
+   618→     * Default: `false`.
+   619→     */
+   620→    disableNormalization?: boolean;
+   621→}
+   622→
+   623→/**
+   624→ * Error indicating a PDF file requires a password or the provided password is incorrect.
+   625→ *
+   626→ * @public
+   627→ */
+   628→export declare class PasswordException extends Error {
+   629→    /**
+   630→     * Create a new PasswordException.
+   631→     * @param message - Optional error message.
+   632→     * @param cause - Optional underlying cause.
+   633→     */
+   634→    constructor(message?: string, cause?: unknown);
+   635→}
+   636→
+   637→export { PDFDataRangeTransport }
+   638→
+   639→/**
+   640→ * @public
+   641→ * Loads PDF documents and exposes helpers for text, image, table, metadata, and screenshot extraction.
+   642→ */
+   643→export declare class PDFParse {
+   644→    private readonly options;
+   645→    private doc;
+   646→    progress: {
+   647→        loaded: number;
+   648→        total: number;
+   649→    };
+   650→    /**
+   651→     * Create a new parser with `LoadParameters`.
+   652→     * Converts Node.js `Buffer` data to `Uint8Array` automatically and ensures a default verbosity level.
+   653→     * @param options - Initialization parameters.
+   654→     */
+   655→    constructor(options: LoadParameters);
+   656→    destroy(): Promise<void>;
+   657→    static get isNodeJS(): boolean;
+   658→    static setWorker(workerSrc?: string): string;
+   659→    /**
+   660→     * Load document-level metadata (info, outline, permissions, page labels) and optionally gather per-page link details.
+   661→     * @param params - Parse options; set `parsePageInfo` to collect per-page metadata described in `ParseParameters`.
+   662→     * @returns Aggregated document metadata in an `InfoResult`.
+   663→     */
+   664→    getInfo(params?: ParseParameters): Promise<InfoResult>;
+   665→    private getPageLinks;
+   666→    /**
+   667→     * Extract plain text for each requested page, optionally enriching hyperlinks and enforcing line or cell separators.
+   668→     * @param params - Parse options controlling pagination, link handling, and line/cell thresholds.
+   669→     * @returns A `TextResult` containing page-wise text and a concatenated document string.
+   670→     */
+   671→    getText(params?: ParseParameters): Promise<TextResult>;
+   672→    private load;
+   673→    private shouldParse;
+   674→    private getPageText;
+   675→    private getHyperlinks;
+   676→    /**
+   677→     * Extract embedded images from requested pages.
+   678→     *
+   679→     * Behavior notes:
+   680→     * - Pages are selected according to ParseParameters (partial, first, last).
+   681→     * - Images smaller than `params.imageThreshold` (width OR height) are skipped.
+   682→     * - Returned ImageResult contains per-page PageImages; each image entry includes:
+   683→     *     - data: Uint8Array (present when params.imageBuffer === true)
+   684→     *     - dataUrl: string (present when params.imageDataUrl === true)
+   685→     *     - width, height, kind, name
+   686→     * - Works in both Node.js (canvas.toBuffer) and browser (canvas.toDataURL) environments.
+   687→     *
+   688→     * @param params - ParseParameters controlling page selection, thresholds and output format.
+   689→     * @returns Promise<ImageResult> with extracted images grouped by page.
+   690→     */
+   691→    getImage(params?: ParseParameters): Promise<ImageResult>;
+   692→    private convertToRGBA;
+   693→    private resolveEmbeddedImage;
+   694→    /**
+   695→     * Render pages to raster screenshots.
+   696→     *
+   697→     * Behavior notes:
+   698→     * - Pages are selected according to ParseParameters (partial, first, last).
+   699→     * - Use params.scale for zoom; if params.desiredWidth is specified it takes precedence.
+   700→     * - Each ScreenshotResult page contains:
+   701→     *     - data: Uint8Array (when params.imageBuffer === true)
+   702→     *     - dataUrl: string (when params.imageDataUrl === true)
+   703→     *     - pageNumber, width, height, scale
+   704→     * - Works in both Node.js (canvas.toBuffer) and browser (canvas.toDataURL) environments.
+   705→     *
+   706→     * @param parseParams - ParseParameters controlling page selection and render options.
+   707→     * @returns Promise<ScreenshotResult> with rendered page images.
+   708→     */
+   709→    getScreenshot(parseParams?: ParseParameters): Promise<ScreenshotResult>;
+   710→    /**
+   711→     * Detect and extract tables from pages by analysing vector drawing operators, then populate cells with text.
+   712→     *
+   713→     * Behavior notes:
+   714→     * - Scans operator lists for rectangles/lines that form table grids (uses PathGeometry and LineStore).
+   715→     * - Normalizes detected geometry and matches positioned text to table cells.
+   716→     * - Honors ParseParameters for page selection.
+   717→     *
+   718→     * @param params - ParseParameters controlling which pages to analyse (partial/first/last).
+   719→     * @returns Promise<TableResult> containing discovered tables per page.
+   720→     */
+   721→    getTable(params?: ParseParameters): Promise<TableResult>;
+   722→    private getPathGeometry;
+   723→    private getPageTables;
+   724→    private fillPageTables;
+   725→}
+   726→
+   727→export { PDFWorker }
+   728→
+   729→export declare class Point extends Shape {
+   730→    x: number;
+   731→    y: number;
+   732→    constructor(x: number, y: number);
+   733→    equal(point: Point): boolean;
+   734→    transform(matrix: Array<number>): this;
+   735→}
+   736→
+   737→export declare class Rectangle extends Shape {
+   738→    from: Point;
+   739→    width: number;
+   740→    height: number;
+   741→    constructor(from: Point, width: number, height: number);
+   742→    get to(): Point;
+   743→    getLines(): Line[];
+   744→    transform(matrix: Array<number>): this;
+   745→}
+   746→
+   747→/**
+   748→ * Represents an HTTP/network response error encountered while fetching PDF data.
+   749→ *
+   750→ * The `status` and `missing` properties mirror values that may be provided
+   751→ * by the underlying PDF library's network layer.
+   752→ *
+   753→ * @public
+   754→ */
+   755→export declare class ResponseException extends Error {
+   756→    /**
+   757→     * Create a new ResponseException.
+   758→     * @param message - Optional error message.
+   759→     * @param status - Optional numeric HTTP/status code.
+   760→     * @param missing - Optional field describing missing resources.
+   761→     * @param cause - Optional underlying cause.
+   762→     */
+   763→    constructor(message?: string, status?: number, missing?: unknown, cause?: unknown);
+   764→}
+   765→
+   766→/**
+   767→ * @public
+   768→ * SafeParseParameters
+   769→ */
+   770→export declare type SafeParseParameters = Required<Pick<ParseParameters, 'lineThreshold' | 'cellThreshold' | 'scale'>> & ParseParameters;
+   771→
+   772→/**
+   773→ * @public
+   774→ * Screenshot
+   775→ */
+   776→export declare interface Screenshot {
+   777→    data: Uint8Array;
+   778→    dataUrl: string;
+   779→    pageNumber: number;
+   780→    width: number;
+   781→    height: number;
+   782→    scale: number;
+   783→}
+   784→
+   785→/**
+   786→ * @public
+   787→ * ScreenshotResult
+   788→ */
+   789→export declare class ScreenshotResult {
+   790→    pages: Array<Screenshot>;
+   791→    total: number;
+   792→    constructor(total: number);
+   793→}
+   794→
+   795→export declare function setDefaultParseParameters(params: ParseParameters): SafeParseParameters;
+   796→
+   797→export declare abstract class Shape {
+   798→    static tolerance: number;
+   799→    abstract transform(matrix: Array<number>): this;
+   800→    static applyTransform(p: Array<number>, m: Array<number>): Array<number>;
+   801→}
+   802→
+   803→export declare class Table {
+   804→    hLines: Array<Line>;
+   805→    vLines: Array<Line>;
+   806→    constructor(line: Line);
+   807→    get isValid(): boolean;
+   808→    get rowPivots(): Array<number>;
+   809→    get colPivots(): Array<number>;
+   810→    add(line: Line): boolean;
+   811→    private intersection;
+   812→    private getSameHorizontal;
+   813→    private getSameVertical;
+   814→    private mergeHorizontalLines;
+   815→    private mergeVerticalLines;
+   816→    normalize(): void;
+   817→    verticalExists(line: Line, y1: number, y2: number): boolean;
+   818→    horizontalExists(line: Line, x1: number, x2: number): boolean;
+   819→    private findBottomLineIndex;
+   820→    private findVerticalLineIndexs;
+   821→    private getRow;
+   822→    toData(): TableData;
+   823→}
+   824→
+   825→export declare type TableArray = Array<Array<string>>;
+   826→
+   827→declare type TableCell = {
+   828→    minXY: Point;
+   829→    maxXY: Point;
+   830→    width: number;
+   831→    height: number;
+   832→    colspan?: number;
+   833→    rowspan?: number;
+   834→    text: Array<string>;
+   835→};
+   836→
+   837→declare class TableData {
+   838→    minXY: Point;
+   839→    maxXY: Point;
+   840→    rows: Array<TableRow>;
+   841→    private rowPivots;
+   842→    private colPivots;
+   843→    constructor(minXY: Point, maxXY: Point, rowPivots: Array<number>, colPivots: Array<number>);
+   844→    findCell(x: number, y: number): TableCell | undefined;
+   845→    get cellCount(): number;
+   846→    get rowCount(): number;
+   847→    check(): boolean;
+   848→    toArray(): string[][];
+   849→}
+   850→
+   851→/**
+   852→ * @public
+   853→ * TableResult
+   854→ */
+   855→export declare class TableResult {
+   856→    pages: Array<PageTableResult>;
+   857→    mergedTables: TableArray[];
+   858→    total: number;
+   859→    constructor(total: number);
+   860→}
+   861→
+   862→declare type TableRow = Array<TableCell>;
+   863→
+   864→/**
+   865→ * @public
+   866→ * TextResult
+   867→ */
+   868→export declare class TextResult {
+   869→    pages: Array<PageTextResult>;
+   870→    text: string;
+   871→    total: number;
+   872→    getPageText(num: number): string;
+   873→    constructor(total: number);
+   874→}
+   875→
+   876→export declare type TypedArray = Int8Array | Uint8Array | Uint8ClampedArray | Int16Array | Uint16Array | Int32Array | Uint32Array | Float32Array | Float64Array;
+   877→
+   878→/**
+   879→ * Generic wrapper for errors where the library cannot classify the cause.
+   880→ *
+   881→ * The `details` property may contain additional information provided by the
+   882→ * underlying PDF library.
+   883→ *
+   884→ * @public
+   885→ */
+   886→export declare class UnknownErrorException extends Error {
+   887→    /**
+   888→     * Create a new UnknownErrorException.
+   889→     * @param message - Optional error message.
+   890→     * @param details - Optional additional details from the PDF library.
+   891→     * @param cause - Optional underlying cause.
+   892→     */
+   893→    constructor(message?: string, details?: unknown, cause?: unknown);
+   894→}
+   895→
+   896→export { VerbosityLevel }
+   897→
+   898→export { }
+   899→
