@@ -45,6 +45,8 @@ import { FormatSelector } from '@/components/cv/format-selector'
 import { ProcessingSteps } from '@/components/cv/processing-steps'
 import { ResultPanel } from '@/components/cv/result-panel'
 import { HistoryList } from '@/components/cv/history-list'
+import { CompareButton } from '@/components/cv/compare-button'
+import { OnboardingGuide } from '@/components/cv/onboarding-guide'
 import { toast } from 'sonner'
 import { StatsDashboard } from '@/components/cv/stats-dashboard'
 import { SampleSelector } from '@/components/cv/sample-selector'
@@ -231,6 +233,7 @@ export default function Home() {
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
+      <OnboardingGuide />
       <Header />
 
       <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-6 sm:px-6 lg:px-8">
@@ -477,7 +480,10 @@ export default function Home() {
           </div>
 
           {/* Colonne droite : historique */}
-          <div className="lg:sticky lg:top-20 lg:h-[calc(100vh-6rem)]">
+          <div className="space-y-3 lg:sticky lg:top-20 lg:h-[calc(100vh-6rem)]">
+            <div className="flex justify-end">
+              <CompareButton items={items} />
+            </div>
             <HistoryList
               items={items}
               loading={historyLoading}

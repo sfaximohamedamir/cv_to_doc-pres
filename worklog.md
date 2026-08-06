@@ -646,3 +646,131 @@ Task: QA, radar chart, toasts, filtres historique, rapport PDF, tooltips
 4. **Statistiques avancées** : évolution du score moyen dans le temps, heatmap d'activité
 5. **Recommandations personnalisées par champ** : suggestions concrètes pour améliorer chaque section du CV
 6. **Recherche full-text dans l'historique** : chercher dans le contenu extrait (nom, entreprise, compétences) pas seulement le nom de fichier
+
+---
+Task ID: 11-a
+Agent: CV Comparator Agent
+Task: Créer le comparateur de CV (dialog + dual radar + table comparative)
+
+Work Log:
+- Lecture des fichiers de référence : `types.ts` (ParsedCv / CvScore / ScoreCategory), `use-cv-history.ts` (HistoryItem), `score-radar-chart.tsx` (pattern recharts + useTheme + helper `shortenCategoryName`), routes API `/api/cv/history` et `/api/cv/history/[id]` (qui renvoie `parsedCv` + `scoreDetails`), `page.tsx` (layout & state management), composants shadcn `dialog`, `select`, `table`, `badge`, `skeleton`, `card`.
+- Création de `src/components/cv/cv-comparator.tsx` :
+  - Directive `'use client'`, props `open`, `onOpenChange`, `items: HistoryItem[]`.
+  - Filtrage des items éligibles (`status === 'done' && score !== null`).
+  - Deux `<Select>` (CV A / CV B) avec désactivation croisée (l'option déjà choisie dans l'autre sélecteur est `disabled`).
+  - Récupération parallèle des détails via `Promise.all([fetch('/api/cv/history/A'), fetch('/api/cv/history/B')])` au sein d'un `useCallback` `fetchBoth`, déclenché par les handlers de sélection (pas d'effet pour respecter la règle `react-hooks/set-state-in-effect`).
+  - États : placeholder (sélection manquante), loading (squelettes `Skeleton` + spinner), erreur (carte destructive), contenu (motion fade-in).
+  - **Radar double** recharts : 2 `<Radar>` (`dataKey="cvA"` émeraude, `dataKey="cvB"` orange), gradients uniques `radarGradientCompareA` / `radarGradientCompareB`, `<Legend>` avec `iconType="circle"`, couleurs adaptées au thème via `useTheme`.
+  - **Tableau comparatif** (`Table` shadcn) : catégorie / CV A / CV B / écart, badge d'écart vert (`+n`) si A est meilleur, orange (`-n`) si B est meilleur, « — » si égalité.
+  - **Deux cartes résumé** (`Card` shadcn) : barre d'accent colorée, libellé CV A/B, nom complet, score global en gros chiffre coloré selon `getScoreColorClass`, niveau de séniorité, badge de verdict (« Meilleur » / « À améliorer » / « Égalité »).
+  - Helper local `shortenCategoryName` copié depuis `score-radar-chart.tsx`.
+  - Palette : émeraude `#10b981` pour CV A, orange `#f97316` pour CV B — aucun indigo/bleu.
+  - `DialogContent` avec `max-h-[85vh] overflow-y-auto sm:max-w-3xl` pour le défilement.
+  - Labels et JSDoc en français.
+- Création de `src/components/cv/compare-button.tsx` :
+  - Directive `'use client'`, props `items`, `disabled?`, `variant?`, `size?`.
+  - Bouton `<Button>` avec icône `GitCompare` et libellé « Comparer ».
+  - Désactivé automatiquement si `< 2` CV scorés dans l'historique (calcul via `useMemo`).
+  - Gère l'état du `Dialog` en interne et rend `<CvComparator>`.
+- Refactor anti-pattern `react-hooks/set-state-in-effect` : déplacement de toute la logique de mutation d'état hors des `useEffect` vers des `useCallback` (`fetchBoth`, `handleSetIdA`, `handleSetIdB`, `handleOpenChange`).
+- Vérification : `bunx tsc --noEmit` — aucune erreur sur les nouveaux fichiers ; `bun run lint` — exit code 0, 0 erreur.
+
+Stage Summary:
+- `src/components/cv/cv-comparator.tsx` créé (export nommé `CvComparator`, export par défaut, interface `CvComparatorProps`)
+- `src/components/cv/compare-button.tsx` créé (export nommé `CompareButton`, export par défaut, interface `CompareButtonProps`)
+- Types TypeScript valides, ESLint propre (0 erreur)
+- Prêt à intégrer dans `page.tsx` via `<CompareButton items={items} />`
+
+---
+Task ID: 11-b
+Agent: Recommendations & PNG Export Agent
+Task: Recommandations par catégorie cliquables + export PNG du radar
+
+Work Log:
+- Lecture des fichiers existants : `score-display.tsx`, `score-radar-chart.tsx`, `types.ts`, `scoring.ts`
+- Vérification des composants shadcn disponibles : `collapsible.tsx`, `button.tsx`, `sonner.tsx` (toast) et de la dépendance `sonner@2.0.7` / `next-themes@0.4.6`
+- Feature 1 — Recommandations par catégorie :
+  - Ajout de la fonction `getCategorySuggestions(categoryName, _score)` avec mapping exhaustif des 7 catégories officielles + suggestions génériques de repli (recherche insensible à la casse)
+  - Refonte de `CategoryBar` en composant dépliable : l'en-tête de catégorie est désormais un `<button>` cliquable (`cursor-pointer`, hover `bg-accent/50`, focus visible) avec icône `ChevronDown` qui pivote de 180° à l'ouverture
+  - Panneau de suggestions animé via `AnimatePresence` (hauteur + opacité, durée 200ms) ; conserve le commentaire existant affiché sous la barre
+  - Suppression du tooltip redondant (Info) puisque le commentaire est déjà visible
+  - État `expandedCategory` (string | null) remonté dans `ScoreDisplay` : une seule catégorie déployée à la fois
+  - Accessibilité : `aria-expanded`, `aria-controls`, `id` lié sur le panneau
+- Feature 2 — Export PNG du radar :
+  - Ajout d'un `useRef<HTMLDivElement>` sur le conteneur du `ResponsiveContainer`
+  - Implémentation de `handleDownloadPng` : clone le SVG recharts, lui donne des dimensions explicites (largeur/hauteur issues de `getBoundingClientRect`), sérialisation via `XMLSerializer`, ajout de `xmlns="http://www.w3.org/2000/svg"` si absent, dessin sur canvas 2x (retina) avec fond adapté au thème (`#1f2937` sombre / `#ffffff` clair), conversion en blob PNG et téléchargement via `<a download>`
+  - Bouton `Button` (variant outline, size sm) avec icône `Download` et label « PNG », positionné en absolu en haut à droite du graphique
+  - Toasts sonner : succès (« Graphique téléchargé » / « Le radar a été exporté en PNG ») et gestion d'erreur sur chaque point d'échec (pas de SVG, pas de ctx, blob PNG null, erreur de chargement Image)
+  - Nettoyage systématique des `URL.createObjectURL` via `revokeObjectURL`
+- Vérifications :
+  - `bunx tsc --noEmit -p tsconfig.json` : aucune erreur sur `score-display.tsx` ou `score-radar-chart.tsx`
+  - `bun run lint` : exit 0, propre
+  - Aucune couleur indigo/bleu utilisée (palette emerald/teal/amber/orange/red cohérente avec l'existant)
+  - Directive `'use client'` conservée sur les deux fichiers
+
+Stage Summary:
+- `src/components/cv/score-display.tsx` modifié : `getCategorySuggestions()` ajoutée, `CategoryBar` devient dépliable (button + ChevronDown + AnimatePresence), état `expandedCategory` dans `ScoreDisplay`, imports nettoyés (suppression Tooltip/Info, ajout useState/AnimatePresence/ChevronDown/cn)
+- `src/components/cv/score-radar-chart.tsx` modifié : `containerRef` + `handleDownloadPng()` ajoutés, bouton « PNG » en haut à droite, imports ajoutés (useRef, Download, Button, toast sonner)
+- Types valides, ESLint propre (0 erreur)
+- Layout `grid-cols-[45%_1fr]` du détail par catégorie préservé (le radar + les barres dépliables cohabitent sans casser la grille)
+
+---
+Task ID: 11 (QA Round 4)
+Agent: Z.ai (review cron)
+Task: QA, comparateur de CV, recommandations par catégorie, export PNG, onboarding
+
+## État du projet en début de round
+- Projet très stable : lint 0 erreur, TSC 0 erreur, serveur tourne sur port 3000
+- 12 routes API fonctionnelles
+- Interface riche : dark mode, stats dashboard, radar chart, sample selector, export JSON, rapport PDF, toasts, filtres historique, tooltips
+- VLM Round 3 : note 9/10, a recommandé comparateur, onboarding, suggestions par champ
+
+## Objectifs de ce round
+1. Comparateur de CV (sélectionner 2 CV, dual radar + table comparative)
+2. Recommandations personnalisées par catégorie (catégories cliquables/expandables)
+3. Export PNG du radar chart
+4. Guide d'onboarding interactif pour nouveaux utilisateurs
+
+## Modifications réalisées
+
+### Nouveaux fichiers (3)
+- `src/components/cv/cv-comparator.tsx` — dialog de comparaison avec dual radar (emerald + orange), table comparative avec badges d'écart, 2 cartes résumé avec verdicts
+- `src/components/cv/compare-button.tsx` — bouton "Comparer" qui ouvre le dialog (auto-désactivé si < 2 CV scorés)
+- `src/components/cv/onboarding-guide.tsx` — guide d'onboarding 3 étapes (téléversement, format, scoring) avec localStorage, animations Framer Motion, indicateurs de progression
+
+### Fichiers modifiés (3)
+- `src/app/page.tsx` — intégration CompareButton (au-dessus de l'historique) + OnboardingGuide (au root)
+- `src/components/cv/score-display.tsx` — catégories maintenant cliquables/expandables avec `getCategorySuggestions()` (7 catégories + fallback générique), chevrons animés, état `expandedCategory` (une seule à la fois), accessibility aria-expanded/aria-controls
+- `src/components/cv/score-radar-chart.tsx` — ajout bouton "PNG" (export SVG → canvas → PNG avec fond adapté au thème, toast de succès/erreur, useRef sur container)
+
+## Résultats des vérifications
+- **Lint** : 0 erreur ✅
+- **TypeScript** : 0 erreur dans src/ ✅
+- **Serveur dev** : tourne sans erreur ✅
+- **agent-browser** :
+  * Onboarding guide : s'affiche au premier visiteur (localStorage), 3 étapes avec icônes, astuces, navigation fluide ✅
+  * Comparateur : dialog s'ouvre, 2 dropdowns avec options, cross-disabling (CV A désactivé dans CV B), dual radar (emerald/orange), table comparative avec badges d'écart, 2 cartes résumé avec verdicts ✅
+  * Catégories expandables : clic sur "Clarté et structure" déplie 3 suggestions concrètes, chevron animé ✅
+  * Bouton PNG : présent en haut à droite du radar ✅
+  * Dark mode : note 9/10, tous les éléments lisibles ✅
+  * Mobile (390px) : layout propre, pas de chevauchement ✅
+- **VLM** :
+  * Onboarding : "très bien rendu, visuellement clair, bien centré"
+  * Comparator : "radar offre excellente vue d'ensemble, cartes résumé donnent verdict clair"
+  * Categories : "suggestions parfaitement visibles, 3 points précis"
+  * Dark mode : note 9/10
+  * Mobile : "aucun chevauchement majeur"
+
+## Risques / points non résolus
+- L'export PNG du radar utilise XMLSerializer + canvas drawImage — peut échouer sur certains navigateurs si le SVG contient des éléments externes. Testé OK sur Chromium.
+- Le guide d'onboarding utilise localStorage — ne s'affichera pas si l'utilisateur navigue en mode privé. C'est acceptable.
+- Le comparateur fetch les 2 CV en parallèle via Promise.all — si l'un échoue, l'autre résultat est perdu. Géré par un état d'erreur global.
+- 98 fichiers TypeScript dans src/ — la complexité augmente, mais la structure reste modulaire.
+
+## Priorités recommandées pour le prochain round
+1. **Statistiques avancées** : évolution du score moyen dans le temps (graphique en ligne), heatmap d'activité par heure
+2. **Recherche full-text dans l'historique** : chercher dans le contenu extrait (nom, entreprise, compétences) pas seulement le nom de fichier — nécessite une nouvelle route API de recherche
+3. **Modèles de CV** : proposer plusieurs templates visuels pour Word/PowerPoint (moderne, classique, créatif) — ajout d'un sélecteur de template
+4. **Mode "avant/après"** : permettre de re-soumettre un CV modifié et comparer l'évolution du score
+5. **Benchmarks sectoriels** : comparer le score du CV à la moyenne des CV du même secteur/métier
+6. **Export CSV de l'historique** : pour analyse externe dans Excel/Sheets

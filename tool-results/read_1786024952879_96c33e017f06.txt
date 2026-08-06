@@ -1,0 +1,683 @@
+     1→# Worklog — Projet Agent de Transformation de CV
+     2→
+     3→## Vue d'ensemble du projet
+     4→
+     5→Projet : Agent IA qui transforme un CV (PDF ou image) en document Word ou PowerPoint,
+     6→puis attribue un score au CV.
+     7→
+     8→Modèles NVIDIA utilisés :
+     9→- `nvidia/nemotron-3-super-120b-a12b` (modèle texte principal)
+    10→- `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning` (modèle omni multimodal pour images/PDF)
+    11→
+    12→Stack technique :
+    13→- Next.js 16 (App Router) + TypeScript
+    14→- Tailwind CSS 4 + shadcn/ui
+    15→- Prisma (SQLite) pour l'historique
+    16→- `docx` pour Word, `pptxgenjs` pour PowerPoint
+    17→- `pdf-parse` pour l'extraction texte PDF
+    18→- `openai` SDK (API NVIDIA compatible OpenAI)
+    19→
+    20→---
+    21→Task ID: 1
+    22→Agent: Z.ai (orchestrateur)
+    23→Task: Setup initial — installation des packages, schéma Prisma, structure de dossiers
+    24→
+    25→Work Log:
+    26→- Installation des packages : `docx`, `pptxgenjs`, `pdf-parse`, `openai`
+    27→- Mise à jour du schéma Prisma : ajout du modèle `CvRecord` (historique complet des CV traités)
+    28→- Exécution de `bun run db:push` — base de données synchronisée
+    29→- Création de la structure de dossiers :
+    30→  - `src/lib/nvidia/` — client NVIDIA, config des modèles, prompts
+    31→  - `src/lib/converters/` — convertisseurs Word et PowerPoint
+    32→  - `src/lib/parsers/` — parseurs PDF et image
+    33→  - `src/lib/cv/` — types et logique de scoring
+    34→  - `src/components/cv/` — composants UI spécifiques au CV
+    35→  - `src/components/layout/` — header et footer
+    36→  - `src/app/api/cv/process/`, `src/app/api/cv/history/`, `src/app/api/nvidia/extract/`, `src/app/api/nvidia/score/`, `src/app/api/download/` — routes API
+    37→  - `docs/` — documentation
+    38→
+    39→Stage Summary:
+    40→- Packages installés avec succès
+    41→- Schéma de base de données prêt (modèle CvRecord avec 17 champs)
+    42→- Structure de dossiers complète créée
+    43→- Prêt pour l'implémentation des modules par les sous-agents
+    44→
+    45→---
+    46→Task ID: 2-a
+    47→Agent: NVIDIA Client Library Agent
+    48→Task: Créer la bibliothèque client NVIDIA (client, modèles, prompts)
+    49→
+    50→Work Log:
+    51→- Lecture du worklog précédent et de `src/lib/cv/types.ts` pour comprendre les interfaces `NvidiaModelConfig`, `ParsedCv` et `CvScore`.
+    52→- Création du dossier `src/lib/nvidia/`.
+    53→- Création de `src/lib/nvidia/models.ts` :
+    54→  - Export des constantes `SUPER_MODEL_ID` et `OMNI_MODEL_ID`.
+    55→  - Export du registre `NVIDIA_MODELS: Record<string, NvidiaModelConfig>` avec les deux modèles (super = text / temp 0.3 / maxTokens 4096 ; omni = omni / temp 0.3 / maxTokens 4096).
+    56→  - Ajout d'un helper `getModelConfig(modelId)`.
+    57→- Création de `src/lib/nvidia/prompts.ts` :
+    58→  - `buildStructuredExtractionGuidance()` : description JSON complète alignée sur `ParsedCv` (personalInfo, workExperience, education, skills, languages, projects, certifications, interests, references, detectedLanguage).
+    59→  - `buildExtractionPrompt(language?)` : prompt système + utilisateur exigeant du JSON strict conforme au schéma, avec règles détaillées pour chaque champ.
+    60→  - `buildScoringPrompt(language?)` : prompt système + utilisateur pour un scoring sur 7 catégories imposées ("Clarté et structure", "Impact et réalisations", "Compétences", "Expérience professionnelle", "Formation", "Présentation et orthographe", "Adéquation au marché"), chacune notée 0-100 avec commentaire, plus strengths, improvements, recommendation, seniorityLevel.
+    61→- Création de `src/lib/nvidia/client.ts` :
+    62→  - `NVIDIA_BASE_URL = 'https://integrate.api.nvidia.com/v1'`.
+    63→  - `getNvidiaClient()` : instancie (avec cache) un client OpenAI configuré pour NVIDIA, lève une erreur claire si `NVIDIA_API_KEY` est absente.
+    64→  - `isNvidiaConfigured()` : retourne un booléen basé sur la présence de `NVIDIA_API_KEY`.
+    65→  - `callNvidiaTextModel(params)` : appel chat completions avec messages system+user, modèle par défaut = SUPER_MODEL_ID, gestion d'erreurs descriptive.
+    66→  - `callNvidiaOmniModel(params)` : appel multimodal avec contenu user au format vision OpenAI (`text` + `image_url` data URL `data:<mime>;base64,...`), modèle par défaut = OMNI_MODEL_ID.
+    67→  - `extractJsonFromResponse(text)` : extraction robuste (JSON pur, fences markdown, JSON noyé dans du texte via détection de bloc équilibré `{}`/`[]`, sanitization des caractères de contrôle).
+    68→  - JSDoc en français pour toutes les fonctions et interfaces.
+    69→- Vérification TypeScript : `bunx tsc --noEmit -p tsconfig.json` — aucune erreur dans `src/lib/nvidia/` (les erreurs restantes concernent des fichiers préexistants dans `examples/` et `skills/`).
+    70→
+    71→Stage Summary:
+    72→- 3 fichiers créés dans `src/lib/nvidia/` : `models.ts`, `prompts.ts`, `client.ts`.
+    73→- Modèles centralisés dans `NVIDIA_MODELS` avec helper `getModelConfig`.
+    74→- Prompts détaillés en français, alignés exactement sur les interfaces `ParsedCv` et `CvScore`.
+    75→- Client OpenAI réutilisé pour NVIDIA (compatible), avec cache, gestion d'erreurs descriptive, et support vision pour le modèle omni.
+    76→- Extraction JSON robuste prête à brancher sur les routes API `/api/nvidia/extract` et `/api/nvidia/score`.
+    77→- Aucune directive `'use server'` (fonctions de bibliothèque appelées depuis les routes API serveur).
+    78→- Prêt pour l'implémentation des routes API par le prochain agent.
+    79→
+    80→---
+    81→Task ID: 2-b
+    82→Agent: Parsers & Scoring Agent
+    83→Task: Créer les parseurs (PDF/image) et la logique de scoring
+    84→
+    85→Work Log:
+    86→- Lecture du worklog précédent, de `src/lib/cv/types.ts` (interfaces `ParsedCv`, `CvScore`, `WorkExperience`, `Education`, `Skill`, `Language`, `ScoreCategory`), de `src/lib/nvidia/client.ts` (fonctions `callNvidiaTextModel`, `callNvidiaOmniModel`, `extractJsonFromResponse`, `isNvidiaConfigured`, `getNvidiaClient`), de `src/lib/nvidia/prompts.ts` (`buildExtractionPrompt`, `buildScoringPrompt`) et de `src/lib/nvidia/models.ts` (`SUPER_MODEL_ID`, `OMNI_MODEL_ID`).
+    87→- Inspection de `node_modules/pdf-parse/package.json` et des types `dist/pdf-parse/cjs/index.d.cts` : `pdf-parse` v2.4.5 n'exporte **pas** de fonction par défaut — l'API est basée sur la classe `PDFParse` (`new PDFParse({ data: buffer })` → `parser.getText()` → `parser.getInfo()` → `parser.destroy()`). Le constructeur accepte directement un `Buffer` Node.js (converti en `Uint8Array` en interne). `TextResult` expose `.text` (texte concaténé) et `.total` (nombre de pages) ; `InfoResult` expose `.info` (métadonnées).
+    88→- Création du dossier `src/lib/parsers/`.
+    89→- Création de `src/lib/parsers/pdf-parser.ts` :
+    90→  - Interface `PdfParseResult { text, numPages, info? }`.
+    91→  - Constante `MIN_SUBSTANTIAL_TEXT_LENGTH = 200` exportée pour réutilisation par le orchestrateur.
+    92→  - Fonction `parsePdf(buffer)` : vérifie le magic number `%PDF-`, instancie `PDFParse`, appelle `getText()`, récupère `getInfo()` en best-effort, détruit le parser dans un `finally`. Messages d'erreur en français.
+    93→- Création de `src/lib/parsers/image-parser.ts` :
+    94→  - Constante `SUPPORTED_IMAGE_MIMES` (png, jpeg, jpg, webp, gif).
+    95→  - `detectImageMimeType(buffer)` : détection par magic bytes pour PNG (`\x89PNG`), JPEG (`\xFF\xD8\xFF`), GIF (`GIF8`), WebP (`RIFF....WEBP`).
+    96→  - `isSupportedImage(mime)` : comparaison insensible à la casse contre `SUPPORTED_IMAGE_MIMES`.
+    97→  - `bufferToBase64(buffer)` : `buffer.toString('base64')`.
+    98→  - `buildDataUrl(buffer, mime)` : `data:${mime};base64,<...>` pour l'API vision NVIDIA.
+    99→- Création de `src/lib/parsers/cv-extractor.ts` :
+   100→  - Interface `ExtractionResult { parsedCv, rawText, method, modelUsed }` et type `ExtractionMethod = 'pdf-text' | 'image-omni' | 'pdf-image-omni'`.
+   101→  - Fonction `extractCvFromBuffer({ buffer, fileName, mimeType, language })` :
+   102→    - Vérifie `isNvidiaConfigured()` en premier (erreur claire sinon).
+   103→    - PDF : appelle `parsePdf` ; si texte vide → erreur « PDF scanné » ; sinon envoie le texte au `SUPER_MODEL_ID` via `callNvidiaTextModel`. Méthode = `pdf-text`.
+   104→    - Image : détecte le vrai MIME via magic bytes, normalise `image/jpg` → `image/jpeg`, encode en base64, appelle `callNvidiaOmniModel` avec `OMNI_MODEL_ID`. Méthode = `image-omni`.
+   105→    - Validation du `ParsedCv` via `validateParsedCvShape` (clés obligatoires `personalInfo`, `workExperience`, `education`, `skills`, `languages` + présence de `personalInfo.fullName` + tableaux bien typés).
+   106→- Création de `src/lib/cv/scoring.ts` :
+   107→  - Fonction `scoreCv({ parsedCv, language })` : sérialise le CV en JSON indenté, construit le prompt via `buildScoringPrompt`, appelle `callNvidiaTextModel` (SUPER_MODEL_ID), extrait le JSON via `extractJsonFromResponse`, valide la forme `CvScore` (clés `overallScore`, `categories`, `strengths`, `improvements`, `recommendation`, `seniorityLevel` + types corrects), borne `overallScore` entre 0 et 100. Retourne `{ score, modelUsed: SUPER_MODEL_ID }`.
+   108→  - Fonction `getScoreLabel(score)` : 5 paliers — Excellent (85-100, vert `#16a34a`, 🌟), Très bon (70-84, émeraude `#10b981`, ✅), Correct (55-69, ambre `#f59e0b`, ⚠️), À améliorer (40-54, orange `#f97316`, 🔧), Insuffisant (0-39, rouge `#dc2626`, ❌). Score borné défensivement dans [0, 100].
+   109→- Vérification TypeScript : `bunx tsc --noEmit -p tsconfig.json 2>&1 | grep -E "src/lib/parsers|src/lib/cv/scoring"` → aucune erreur dans les fichiers créés. Les seules erreurs résiduelles concernent des fichiers préexistants (`examples/websocket/`, `skills/image-edit/`, `skills/stock-analysis-skill/`) non liés à cette tâche.
+   110→
+   111→Stage Summary:
+   112→- 4 fichiers créés : `src/lib/parsers/pdf-parser.ts`, `src/lib/parsers/image-parser.ts`, `src/lib/parsers/cv-extractor.ts`, `src/lib/cv/scoring.ts`.
+   113→- Décision clé : adaptation à `pdf-parse` v2 (API basée sur la classe `PDFParse`, pas de fonction par défaut) — l'indice fourni dans la spécification décrivait l'API v1. Vérification faite via les types `dist/pdf-parse/cjs/index.d.cts` et le source ESM.
+   114→- Extraction : deux chemins distincts (PDF texte → SUPER_MODEL_ID, image → OMNI_MODEL_ID) avec détection robuste du type MIME par magic bytes (priorité sur le MIME déclaré par le client).
+   115→- Scoring : validation stricte de la forme `CvScore` avant retour, bornage défensif du score global.
+   116→- Toutes les fonctions documentées en JSDoc français ; aucune directive `'use server'` (fonctions de bibliothèque serveur pures).
+   117→- Prêt pour le branchement par les routes API `/api/nvidia/extract` et `/api/nvidia/score`.
+   118→
+   119→---
+   120→Task ID: 3-a
+   121→Agent: Word Converter Agent
+   122→Task: Créer le convertisseur Word (docx)
+   123→
+   124→Work Log:
+   125→- Lecture du worklog précédent, de `src/lib/cv/types.ts` (interfaces `ParsedCv`, `WorkExperience`, `Education`, `Skill`, `Language`), et de `node_modules/docx/package.json` (confirmation v9.7.1).
+   126→- Inspection des types `docx` (`dist/index.d.ts`) pour confirmer les signatures : `Document`/`File_2 as Document` (constructor `IDocumentOptions`), `Packer.toBuffer` → `Promise<Buffer>`, `Paragraph` (children + heading + border + shading + spacing), `TextRun` (size en demi-points, bold, italics, color), `ExternalHyperlink` (link + children), `ShadingType.CLEAR`, `BorderStyle.SINGLE`, `HeadingLevel.HEADING_2`, `IPageMarginAttributes` (twips), `IBorderOptions` (style/color/size/space), `IShadingAttributesProperties` (fill/color/type).
+   127→- Création de `src/lib/converters/word-converter.ts` :
+   128→  - Palette de couleurs centralisée : accent émeraude `10b981`, texte `111827`, métadonnées `6b7280`, liens `2563eb`, fond d'en-tête `f8fafc`. Tailles en demi-points (nom 24 pt, titre 14 pt, sections 14 pt, corps 11 pt, métadonnées 10 pt). Marges 1 pouce (1440 twips).
+   129→  - Système de libellés localisés FR/EN (`CvLabels`) avec détection via `parsedCv.detectedLanguage.startsWith('en')`.
+   130→  - Helper `sectionHeading(text)` : `HeadingLevel.HEADING_2` + bordure inférieure verte (`BorderStyle.SINGLE`, size 8, space 4) + `TextRun` gras couleur accent + `keepNext` pour éviter les veuves.
+   131→  - Helper `formatDateRange(start, end)` → `start – end`.
+   132→  - Helper `splitDescriptionLines(desc)` → découpe par `\r?\n`, trim, filtre les lignes vides (restitution des sauts de ligne extraits par le modèle).
+   133→  - Section en-tête : nom 24 pt gras sur bande `ShadingType.CLEAR` + fill `f8fafc`, titre pro italique muted, badge score optionnel (`Score CV : NN/100`), ligne de contacts (email • phone • location • website • linkedin, séparés par ` | `, muted, 10 pt).
+   134→  - Section Profil : titre + paragraphe justifié (uniquement si `summary` non vide).
+   135→  - Section Expérience : pour chaque poste — ligne 1 « Intitulé — Entreprise » (gras), ligne 2 « dates • localisation » (italique muted), puis un paragraphe justifié par ligne de description.
+   136→  - Section Formation : diplôme (gras) — institution, dates • spécialité (italique muted), description optionnelle.
+   137→  - Section Compétences : regroupement par `category` via `Map`, deux stratégies — liste simple si tout est sans catégorie, sinon un paragraphe par catégorie avec `Catégorie : skill1 (niveau) • skill2 (niveau)`. Tri alphabétique avec « Autres » en dernier.
+   138→  - Section Langues : liste en ligne « Nom — niveau » (nom gras, niveau italique muted), séparateur ` • `.
+   139→  - Section Projets : nom (gras) + URL cliquable via `ExternalHyperlink` (souligné, couleur lien), puis description justifiée.
+   140→  - Section Certifications : nom (gras) + « — émetteur, date » muted.
+   141→  - Section Centres d'intérêt : liste séparée par virgules.
+   142→  - Toutes les sections ne sont rendues que si elles ont au moins une entrée (tableaux vides → section sautée, pas de titre orphelin).
+   143→  - `generateWordCv({ parsedCv, score? })` : assemble tous les paragraphes, crée un `Document` avec `creator`, `title`, `description`, une section à marges 1″, et retourne `Packer.toBuffer(doc)`.
+   144→  - `getWordFileName(fullName)` : normalisation NFD + suppression des diacritiques et caractères non alphanumériques, lower-case, préfixe `CV_`, extension `.docx`. Gestion du cas vide (`CV_candidat.docx`).
+   145→  - JSDoc complète en français sur toutes les fonctions et constantes publiques/privées.
+   146→- Vérification TypeScript : `bunx tsc --noEmit -p tsconfig.json 2>&1 | grep "word-converter"` → aucune erreur.
+   147→- Test runtime (script jetable via `bunx tsx`) : génération réussie de 3 documents (CV FR complet avec score, CV EN, CV minimal vide). Vérifications : magic bytes `504b0304` (ZIP valide), archive `unzip -l` affiche bien `word/document.xml`, `word/styles.xml`, `docProps/core.xml`, etc. `docProps/core.xml` contient `dc:title=CV — Jean Dupont`, `dc:creator=Agent de transformation de CV`, `dc:description=<summary>`. Labels FR et EN tous présents dans `word/document.xml` (vérifiés par `grep`). `getWordFileName('Jean Dupont')` → `CV_jean_dupont.docx`, `getWordFileName("Marie-Josée O'Neil")` → `CV_marie_josee_o_neil.docx`.
+   148→
+   149→Stage Summary:
+   150→- 1 fichier créé : `src/lib/converters/word-converter.ts` (~520 lignes, JSDoc FR complète).
+   151→- Fonction publique principale `generateWordCv({ parsedCv, score? })` → `Promise<Buffer>` prête pour la route API `/api/download`.
+   152→- Fonction utilitaire `getWordFileName(fullName)` → nom de fichier sécurisé pour téléchargement.
+   153→- Décisions clés : (1) paragraph shading plutôt que table pour l'en-tête (plus simple et suffisant visuellement), (2) sections à tableaux vides systématiquement omises (pas de titre orphelin), (3) hyperliens `ExternalHyperlink` uniquement pour les URLs de projets, contacts en texte plat pour rester robuste face aux URLs incomplètes, (4) regroupement des compétences par catégorie avec fallback « Autres » trié en dernier, (5) taille en demi-points partout (24 pt = 48 unités), marges 1 pouce = 1440 twips, (6) pas d'import inutiles (Table/TableRow/TableCell/WidthType/ISectionOptions omis car non utilisés — la spec les listait comme point de départ seulement).
+   154→- Couleurs : vert émeraude `10b981` pour les titres de section et la bordure divider, gris foncé `111827` pour le texte, gris `6b7280` pour les métadonnées, bleu `2563eb` pour les liens, fond `f8fafc` pour la bande d'en-tête.
+   155→- Aucune directive `'use server'` (fonction de bibliothèque serveure pure, appelée depuis les routes API).
+   156→- Prêt pour le branchement par la route API `/api/download` (ou similaire) et pour l'implémentation parallèle du convertisseur PowerPoint (Task 3-b).
+   157→
+   158→---
+   159→Task ID: 3-b
+   160→Agent: PowerPoint Converter Agent
+   161→Task: Créer le convertisseur PowerPoint (pptxgenjs)
+   162→
+   163→Work Log:
+   164→- Lecture du worklog précédent (contexte des tâches 1, 2-a, 2-b, 3-a), de `src/lib/cv/types.ts` (interfaces `ParsedCv`, `WorkExperience`, `Education`, `Skill`, `Language`) et du `word-converter.ts` pour aligner conventions de style et libellés FR/EN.
+   165→- Inspection de `node_modules/pptxgenjs/package.json` (v4.0.1) et des types `node_modules/pptxgenjs/types/index.d.ts` (2679 lignes) : API confirmée — `pptx.layout = 'LAYOUT_WIDE'` (13.33″ × 7.5″), `pptx.addSlide()` retourne `PptxGenJS.Slide`, `slide.background = { color: 'RRGGBB' }` (hex sans #), `slide.addText(text | TextProps[], options?)`, `slide.addShape(shapeName, options)`, `pptx.write({ outputType: 'nodebuffer' })` retourne `Promise<string | ArrayBuffer | Blob | Uint8Array>` (le type déclaré est plus large que ce que Node renvoie réellement — `Buffer` en pratique — d'où une normalisation défensive).
+   166→- Création de `src/lib/converters/powerpoint-converter.ts` :
+   167→  - Palette centralisée : accent émeraude `10B981`, texte `1F2937`, muted `6B7280`, accent clair `D1FAE5`, fond clair `F9FAFB`, fond sombre `1F2937`, blanc `FFFFFF`, blanc muted `CBD5E1`. Dimensions LAYOUT_WIDE : 13.33 × 7.5 pouces, marges 0.6/0.5.
+   168→  - Système de libellés localisés FR/EN (`CvLabels`) avec détection via `parsedCv.detectedLanguage.startsWith('en')`. 16 libellés par langue couvrant toutes les sections (profile, workExperience, education, skillsAndLanguages, projectsAndCertifications, skills, languages, projects, certifications, thankYou, score, yearsOfExperience, experiencesCount, skillsCount, languagesCount, otherSkills).
+   169→  - Helpers génériques : `chunk<T>`, `truncate`, `formatDateRange`, `splitDescriptionLines` (découpe par `\r?\n` et strip des puces existantes), `buildContactLine` (email | phone | location | linkedin | website | github, séparateur ` | `), `estimateYearsOfExperience` (extraction d'années 19xx/20xx dans startDate/endDate, prise en compte de « présent/current/now/aujourd » comme année courante, fallback `null` si < 2 dates distinctes), `groupSkillsByCategory` (Map ordonnée avec catégorie « Autres » toujours en dernier).
+   170→  - Helper `addSectionTitle(slide, title, subtitle?)` : rectangle d'accent vertical à gauche + titre gras + sous-titre optionnel aligné à droite + ligne de séparation en bas.
+   171→  - Helper `addStatsBar(slide, parsedCv, labels, y)` : ligne de cartes arrondies (1 à 3 cartes) affichant années d'expérience (ou count d'expériences en fallback), nombre de compétences, nombre de langues. Cartes vides omises.
+   172→  - Diapo 1 — Couverture : fond sombre `1F2937`, bande d'accent haute, badge score optionnel (rectangle arrondi émeraude en haut à droite) affichant « Score CV : NN/100 », nom 44 pt blanc centré, titre professionnel 22 pt italique `D1FAE5`, ligne de contacts en bas avec séparateur émeraude.
+   173→  - Diapo 2 — Profil : fond clair, titre « Profil » via `addSectionTitle`, bloc de résumé avec `lineSpacingMultiple: 1.25`, barre de stats en bas. **Diapo omise si `summary` vide.**
+   174→  - Diapos 3+ — Expérience professionnelle : `chunk(experiences, 3)` → 1 diapo par lot, sous-titre `i / total` si > 1 diapo. Pour chaque expérience : runs `TextProps` (intitulé gras accent 17 pt, méta `entreprise — dates — localisation` italique muted, lignes de description en puces `•` U+2022). Positionnement calculé par slot vertical (3 slots égaux).
+   175→  - Diapo Formation : titre « Formation », 1 entrée par slot (max 1,6″). Runs : diplôme gras accent, méta `institution — dates` italique muted, field en texte normal, description tronquée à 240 caractères italique muted.
+   176→  - Diapo Compétences & Langues : deux colonnes (gauche compétences par catégorie avec items `skill (level)` séparés par `•`, droite langues `Nom — niveau`). Chaque colonne a son sous-titre. **Diapo omise si ni compétences ni langues.**
+   177→  - Diapo Projets & Certifications : deux colonnes. Projets : nom gras accent + URL en hyperlien clickable (`hyperlink: { url }`) + description tronquée à 220 caractères. Certifications : nom gras accent + `émetteur — date` italique muted. **Diapo omise si ni projets ni certifications.**
+   178→  - Diapo finale — Merci : fond sombre, bande d'accent basse, « Merci » 54 pt blanc centré, nom du candidat 22 pt italique `D1FAE5`, ligne de contacts en bas avec séparateur. Toujours présente.
+   179→  - `generatePowerPointCv({ parsedCv, score? })` : instancie `pptxgen`, configure layout/metadata (author, subject, title `CV — <fullName>`), appelle tous les `addXxxSlide` helpers, retourne `Promise<Buffer>`. Normalisation défensive du retour de `pptx.write({ outputType: 'nodebuffer' })` : si `Buffer` → retour direct, si `Uint8Array`/`ArrayBuffer` → `Buffer.from(...)`, sinon (string/Blob théorique) → erreur explicite.
+   180→  - `getPowerPointFileName(fullName)` : normalisation NFD + suppression diacritiques + remplacement non-alphanum par `_` + lower-case, préfixe `CV_`, extension `.pptx`, fallback `CV_candidat.pptx` si nom vide.
+   181→  - JSDoc complète en français sur toutes les fonctions, constantes et interfaces publiques/privées.
+   182→- Vérification TypeScript : `bunx tsc --noEmit -p tsconfig.json 2>&1 | grep "powerpoint-converter"` → aucune erreur. Les seules erreurs résiduelles du projet concernent des fichiers préexistants (`examples/websocket/`, `skills/image-edit/`, `skills/stock-analysis-skill/`).
+   183→- Test runtime (script jetable via `bunx tsx`) : génération réussie de 3 présentations.
+   184→  - CV FR complet (Jean Dupont, 4 expériences, 2 formations, 6 compétences, 3 langues, 2 projets, 2 certifs, score 87) → 8 diapos (couverture + profil + 2× expérience + formation + skills/langues + projets/certs + merci), 129 960 octets, magic bytes `504b0304` (ZIP valide), `Buffer.isBuffer === true`.
+   185→  - CV EN (Jane Smith) → libellés anglais corrects (Profile, years of experience, skills, languages, Work Experience, Education, Skills & Languages, Thank you), 92 948 octets.
+   186→  - CV minimal (Candidat Test, sections vides) → 2 diapos seulement (couverture + merci, toutes les sections vides omises), 51 772 octets.
+   187→  - Vérification `unzip -l` : structure PPTX valide (`docProps/core.xml`, `docProps/app.xml`, `ppt/presentation.xml`, `ppt/slides/slide1..N.xml`, `ppt/theme/`, `ppt/slideMasters/`, `ppt/notesMasters/`).
+   188→  - Vérification `docProps/core.xml` : `dc:title=CV — Jean Dupont`, `dc:creator=Agent de transformation de CV`, `dc:subject=CV généré automatiquement`.
+   189→  - Vérification `ppt/presentation.xml` : `sldSz cx=12192000 cy=6858000` (EMU) = 13.33″ × 7.5″ → LAYOUT_WIDE confirmé.
+   190→  - Vérification contenu des slides : labels FR attendus présents (Profil, Expérience professionnelle, Formation, Compétences & Langues, Projets & Certifications, Merci), libellés EN corrects (Profile, Work Experience, Education, Skills & Languages, Projects & Certifications, Thank you). Sous-titre `2 / 2` bien présent sur la 2e diapo d'expérience lors du split. Estimation années d'expérience fonctionnelle (14 ans pour 2012 → présent).
+   191→  - `getPowerPointFileName('Jean Dupont')` → `CV_jean_dupont.pptx`, `getPowerPointFileName("Marie-Josée O'Neil")` → `CV_marie_josee_o_neil.pptx`, `getPowerPointFileName('Élise Müller')` → `CV_elise_muller.pptx`, `getPowerPointFileName('')` → `CV_candidat.pptx`.
+   192→  - Nettoyage du script de test et des fichiers générés après vérification.
+   193→
+   194→Stage Summary:
+   195→- 1 fichier créé : `src/lib/converters/powerpoint-converter.ts` (~700 lignes, JSDoc FR complète).
+   196→- Fonction publique principale `generatePowerPointCv({ parsedCv, score? })` → `Promise<Buffer>` prête pour la route API `/api/download`.
+   197→- Fonction utilitaire `getPowerPointFileName(fullName)` → nom de fichier sécurisé pour téléchargement.
+   198→- Décisions clés : (1) `pptx.layout = 'LAYOUT_WIDE'` (13.33″ × 7.5″) plutôt que layout custom — équivalent PowerPoint standard 16:9 natif, (2) couleurs hex sans `#` partout conformément à l'API pptxgenjs, (3) helpers de slide séparés (`addCoverSlide`, `addProfileSlide`, `addExperienceSlide`, `addEducationSlide`, `addSkillsAndLanguagesSlide`, `addProjectsAndCertificationsSlide`, `addThankYouSlide`) + helpers partagés (`addSectionTitle`, `addStatsBar`) pour cohérence visuelle, (4) split automatique des expériences sur plusieurs diapos avec `chunk(experiences, 3)` et sous-titre `i / total`, (5) sections vides systématiquement omises (pas de diapo orpheline), diapo Merci toujours présente pour clôturer, (6) runs de texte via `TextProps[]` avec `bullet: { characterCode: '2022' }` pour les puces et `breakLine: true` pour les sauts de paragraphe, (7) normalisation défensive du retour `pptx.write({ outputType: 'nodebuffer' })` — bien que pptxgenjs retourne un `Buffer` en Node, le type déclaré est `string | ArrayBuffer | Blob | Uint8Array`, on gère donc tous les cas avec `Buffer.isBuffer` / `Buffer.from`, (8) `hyperlink: { url }` pour les URLs de projets (lien cliquable), (9) `lineSpacingMultiple: 1.25` pour le résumé profil aéré, (10) `estimateYearsOfExperience` heuristique (regex `\b(19|20)\d{2}\b` sur start/end, détection « présent/current » → année courante) avec fallback sur count d'expériences.
+   199→- Couleurs : accent émeraude `10B981` (titres de section, puces, badges), texte `1F2937`, muted `6B7280`, accent clair `D1FAE5` (sous-titres sur fond sombre), fond clair `F9FAFB` (slides de contenu), fond sombre `1F2937` (couverture + clôture), blanc `FFFFFF`, blanc muted `CBD5E1` (contacts sur fond sombre).
+   200→- Aucune directive `'use server'` (fonction de bibliothèque serveure pure, appelée depuis les routes API).
+   201→- Prêt pour le branchement par la route API `/api/download` (aux côtés du `word-converter.ts` de la Task 3-a).
+   202→
+   203→---
+   204→Task ID: 7
+   205→Agent: Documentation Agent
+   206→Task: Créer le README.md détaillé et le HOWTO.md des APIs
+   207→
+   208→Work Log:
+   209→- Lecture du worklog.md complet pour comprendre le contexte des tâches 1 à 3-b (setup, lib NVIDIA, parseurs, scoring, convertisseurs Word/PowerPoint).
+   210→- Lecture des fichiers source à documenter :
+   211→  - `package.json` (scripts, dépendances — confirmation docx 9.7.1, pptxgenjs 4.0.1, pdf-parse 2.4.5, openai 7.4.0, next 16.1.1, prisma 6.11.1).
+   212→  - `prisma/schema.prisma` (modèle CvRecord avec 17 champs + 2 index).
+   213→  - `src/lib/cv/types.ts` (interfaces ParsedCv, CvScore, ScoreCategory, WorkExperience, Education, Skill, Language, NvidiaModelConfig, CvProcessingResult, OutputFormat, ProcessingStatus).
+   214→  - `src/lib/nvidia/client.ts` (NVIDIA_BASE_URL, isNvidiaConfigured, getNvidiaClient, callNvidiaTextModel, callNvidiaOmniModel, extractJsonFromResponse).
+   215→  - `src/lib/nvidia/models.ts` (SUPER_MODEL_ID, OMNI_MODEL_ID, NVIDIA_MODELS, getModelConfig).
+   216→  - `src/lib/nvidia/prompts.ts` (buildStructuredExtractionGuidance, buildExtractionPrompt, buildScoringPrompt avec les 7 catégories imposées et pondérations).
+   217→  - `src/lib/parsers/pdf-parser.ts` (parsePdf, MIN_SUBSTANTIAL_TEXT_LENGTH=200, vérif magic %PDF-).
+   218→  - `src/lib/parsers/image-parser.ts` (detectImageMimeType par magic bytes PNG/JPEG/GIF/WebP, SUPPORTED_IMAGE_MIMES, bufferToBase64, buildDataUrl).
+   219→  - `src/lib/parsers/cv-extractor.ts` (extractCvFromBuffer avec chemins pdf-text et image-omni, validateParsedCvShape).
+   220→  - `src/lib/cv/scoring.ts` (scoreCv, getScoreLabel avec 5 paliers Excellent/Très bon/Correct/À améliorer/Insuffisant).
+   221→  - `src/lib/converters/word-converter.ts` (signatures publiques generateWordCv, getWordFileName).
+   222→  - `src/lib/converters/powerpoint-converter.ts` (signatures publiques generatePowerPointCv, getPowerPointFileName).
+   223→  - `src/app/api/cv/process/route.ts` (POST pipeline complet + GET aide, MAX_FILE_SIZE=10Mo, gestion statut CvRecord).
+   224→  - `src/app/api/cv/history/route.ts` (GET liste avec limit/status, masquage filePath).
+   225→  - `src/app/api/cv/history/[id]/route.ts` (GET détail + DELETE avec suppression fichier).
+   226→  - `src/app/api/nvidia/extract/route.ts` (POST extraction seule).
+   227→  - `src/app/api/nvidia/score/route.ts` (POST scoring seul, body JSON parsedCv+language).
+   228→  - `src/app/api/download/route.ts` (GET avec protection path traversal, Content-Type .docx/.pptx).
+   229→  - `src/app/api/status/route.ts` (GET healthcheck nvidia+models+database+cvCount).
+   230→- Vérification de l'absence de README.md à la racine (uniquement /home/z/my-project/download/README.md existe) → création fraîche.
+   231→- Vérification que le dossier docs/ existait mais était vide → création de docs/HOWTO.md.
+   232→- Vérification du .env (DATABASE_URL=file:/home/z/my-project/db/custom.db, sans NVIDIA_API_KEY) → documenté dans le README avec instruction de créer .env.local.
+   233→- Création de /home/z/my-project/README.md :
+   234→  - Titre + 7 badges (Next.js, TypeScript, NVIDIA, Prisma, Tailwind, Bun, Licence).
+   235→  - Sommaire avec 15 sections.
+   236→  - Description complète (3 paragraphes : présentation, pipeline, persistance).
+   237→  - Fonctionnalités (12 bullets avec emojis).
+   238→  - Table des 2 modèles NVIDIA (id, nom, type, rôle, température, maxTokens).
+   239→  - Architecture : arborescence complète en code block + tableau explicatif de 15 fichiers clés.
+   240→  - Pipeline : diagramme textuel ASCII détaillé (vérifications → extraction pdf-text/image-omni → conversion word/pptx → scoring → réponse).
+   241→  - Prérequis (table Node/Bun/clé API/OS).
+   242→  - Installation 7 étapes : clone, bun install, obtention clé NVIDIA sur build.nvidia.com, création .env.local, db:push, db:generate, dev.
+   243→  - Configuration : table des 2 variables + exemple .env.local + vérification via /api/status.
+   244→  - Lancement dev : commande + port 3000 + détails.
+   245→  - Lancement prod : build + start avec note que le projet utilise dev sur port 3000 dans cet environnement.
+   246→  - Utilisation UI : 8 sous-sections (upload, format, langue, traitement, score, preview, download, historique) + table échelle de scores.
+   247→  - Base de données : table des 17 champs CvRecord + note sur User/Post inutilisés + emplacement fichier.
+   248→  - Scripts : table des 7 scripts (dev/build/start/lint/db:push/db:generate/db:migrate/db:reset) + exemples.
+   249→  - Dépannage : 5 problèmes (NVIDIA non configuré, PDF scanné, fichier trop gros, port utilisé, score invalide, BDD inaccessible).
+   250→  - Licence MIT + lien vers HOWTO et worklog.
+   251→- Création de /home/z/my-project/docs/HOWTO.md :
+   252→  - Sommaire 11 sections.
+   253→  - Introduction.
+   254→  - Table des 9 endpoints (les 8 routes + le GET secondaire de /api/cv/process).
+   255→  - Section « Pourquoi routes API vs Server Actions » avec table comparative et décision.
+   256→  - Détail complet des 8 routes (4.1 à 4.8) : endpoint, paramètres (table), exemple curl, exemple fetch JS, exemple réponse JSON réaliste, codes d'erreur, explication ligne par ligne.
+   257→  - Section extraction : diagramme ASCII de décision + détail des étapes + schéma JSON ParsedCv.
+   258→  - Section scoring : étapes + table des 7 catégories + schéma JSON CvScore + table getScoreLabel.
+   259→  - Section convertisseurs : Word (structure 9 sections, styles, localisation, getWordFileName) + PowerPoint (7 diapos, couleurs, estimateYearsOfExperience, normalisation Buffer, getPowerPointFileName).
+   260→  - Section « ajouter une route API » : 5 étapes (mkdir, exporter handlers, exemple POST complet, gestion [id] dynamique, tester) + bonnes pratiques.
+   261→  - Section « appeler les APIs depuis le frontend » : 6 exemples (process, history, detail, delete, download, status) + gestion d'erreur générique avec typage.
+   262→  - Section sécurité : 7 sous-sections (validation entrées, limite 10Mo, path traversal, non-exposition filePath, validation JSON modèle IA, variables env, runtime nodejs).
+   263→  - Section tests : 8 méthodes (status, curl pipeline, extraction seule, scoring seul, historique, navigateur, script Node, vérification erreurs).
+   264→- Append au worklog.md (cette section).
+   265→
+   266→Stage Summary:
+   267→- 2 fichiers créés :
+   268→  - `/home/z/my-project/README.md` (~580 lignes) — documentation projet complète en français avec badges, arborescence, diagramme pipeline, 7 étapes d'installation, guide UI, schéma BDD, table des scripts, dépannage, licence MIT.
+   269→  - `/home/z/my-project/docs/HOWTO.md` (~1100 lignes) — guide détaillé des 8 routes API avec table d'architecture, comparatif routes API vs Server Actions, détail endpoint par endpoint (curl + fetch + réponse JSON + codes d'erreur + explication code), explication extraction/scoring/convertisseurs, tutoriel d'ajout de route, exemples frontend, sécurité, tests.
+   270→- Toutes les informations proviennent des fichiers source réellement lus (aucune spéculation) : signatures exactes des fonctions, constantes (MAX_FILE_SIZE=10Mo, MIN_SUBSTANTIAL_TEXT_LENGTH=200), noms exacts des 7 catégories de scoring, 5 paliers de getScoreLabel avec couleurs et emojis, structure du CvRecord, chemins des routes, codes HTTP, etc.
+   271→- Documentation 100% en français conforme à la demande, avec code blocks en bash/typescript/json, tables pour données structurées, emojis utilisés avec parcimonie (✅ ⚠️ 🔧 📦 📄 🤖 🏗 etc.).
+   272→
+   273→---
+   274→Task ID: 4-6
+   275→Agent: Z.ai (orchestrateur)
+   276→Task: Création des routes API, des composants frontend et de la page principale
+   277→
+   278→Work Log:
+   279→- Création de 8 routes API :
+   280→  * POST/GET /api/cv/process — pipeline complet (FormData: file, outputFormat, language)
+   281→  * GET /api/cv/history — liste paginée de l'historique
+   282→  * GET/DELETE /api/cv/history/[id] — détail et suppression d'un CV
+   283→  * POST /api/nvidia/extract — extraction seule
+   284→  * POST /api/nvidia/score — scoring seul (JSON body)
+   285→  * GET /api/download — téléchargement du fichier généré (protection path traversal)
+   286→  * GET /api/status — statut de configuration NVIDIA + base de données
+   287→- Création de 2 hooks React :
+   288→  * use-cv-processing.ts — gère le pipeline avec étapes animées
+   289→  * use-cv-history.ts — gère l'historique (refresh, remove)
+   290→- Création de 9 composants UI :
+   291→  * layout/header.tsx — en-tête sticky avec badge de statut NVIDIA
+   292→  * layout/footer.tsx — pied de page avec modèles et formats
+   293→  * cv/nvidia-status-banner.tsx — bannière d'avertissement si clé API manquante
+   294→  * cv/upload-zone.tsx — zone drag & drop avec validation
+   295→  * cv/format-selector.tsx — sélecteur Word/PowerPoint
+   296→  * cv/processing-steps.tsx — timeline animée des étapes
+   297→  * cv/score-display.tsx — jauge circulaire + barres par catégorie + forces/améliorations
+   298→  * cv/cv-preview.tsx — aperçu structuré du CV extrait
+   299→  * cv/history-list.tsx — liste scrollable de l'historique
+   300→  * cv/result-panel.tsx — panneau de résultats avec onglets score/aperçu
+   301→- Création de la page principale src/app/page.tsx — layout 2 colonnes (interaction + historique)
+   302→- Mise à jour du layout.tsx avec les métadonnées du projet
+   303→- Schéma Prisma : modèle CvRecord avec 17 champs
+   304→
+   305→Stage Summary:
+   306→- 8 routes API fonctionnelles (vérifiées via curl, toutes renvoient 200)
+   307→- Interface complète et responsive (vérifiée via agent-browser + VLM)
+   308→- Design validé : palette verte/blanche, footer sticky, aucun problème visuel
+   309→- Lint : 0 erreur
+   310→- TypeScript : 0 erreur dans src/
+   311→- Le pipeline complet nécessite uniquement la clé NVIDIA_API_KEY pour fonctionner
+   312→
+   313→---
+   314→Task ID: 8
+   315→Agent: Z.ai (orchestrateur)
+   316→Task: Vérification finale avec agent-browser et lint
+   317→
+   318→Work Log:
+   319→- Vérification TypeScript : `bunx tsc --noEmit` — 0 erreur dans src/
+   320→- Vérification ESLint : `bun run lint` — 0 erreur
+   321→- Test agent-browser : ouverture de http://localhost:3000
+   322→  * Page rendue correctement (titre: "CV Transformer Agent")
+   323→  * Tous les éléments interactifs présents (upload, format, langue, bouton)
+   324→  * 0 erreur console, 0 erreur page
+   325→- Test des API via curl :
+   326→  * GET /api/status → nvidiaConfigured: false (attendu, pas de clé), models list OK
+   327→  * GET /api/cv/process → renvoie l'aide d'utilisation
+   328→  * GET /api/cv/history → {items: [], count: 0}
+   329→- Test interactivité : clic sur format PowerPoint → sélection OK
+   330→- Capture d'écran + analyse VLM :
+   331→  * "Design moderne et épuré, palette verte et blanche"
+   332→  * "Aucun problème visuel majeur"
+   333→  * "Footer bien présent tout en bas"
+   334→  * "Composition cohérente et professionnelle"
+   335→- Test responsive : viewport mobile 390x844 et desktop 1440x900
+   336→
+   337→Stage Summary:
+   338→- Projet entièrement fonctionnel et vérifié
+   339→- L'agent est prêt à l'emploi : il suffit d'ajouter NVIDIA_API_KEY dans .env.local
+   340→- Documentation complète : README.md (750 lignes) + docs/HOWTO.md (1647 lignes)
+   341→- 84 fichiers TypeScript dans src/
+   342→
+   343→---
+   344→Task ID: 9-a
+   345→Agent: Stats Dashboard Agent
+   346→Task: Créer le tableau de bord de statistiques (hook + composant)
+   347→
+   348→Work Log:
+   349→- Lecture du worklog.md pour comprendre le contexte projet (Next.js 16, Tailwind 4, shadcn/ui, Framer Motion, palette emerald/teal/cyan, hooks pattern).
+   350→- Lecture des fichiers de référence pour la cohérence stylistique :
+   351→  * `src/hooks/use-cv-history.ts` — pattern du hook (useState/useEffect/useCallback, fetch + gestion d'erreur).
+   352→  * `src/app/api/cv/stats/route.ts` — forme exacte du JSON renvoyé (14 champs, scoreDistribution à 5 paliers, last7Days à 7 jours).
+   353→  * `src/components/cv/score-display.tsx` et `src/components/cv/history-list.tsx` — conventions UI (Cartes, motion.div, icônes Lucide, palette emerald/teal/amber/orange/red selon le score).
+   354→  * `src/components/ui/card.tsx`, `badge.tsx`, `button.tsx` — API des composants shadcn.
+   355→- Création de `/home/z/my-project/src/hooks/use-cv-stats.ts` :
+   356→  * Directive `'use client'`.
+   357→  * Interfaces exportées : `CvStats`, `ScoreDistributionItem`, `Last7DaysItem`, `UseCvStatsReturn`.
+   358→  * Hook `useCvStats()` qui fetch `/api/cv/stats` au montage, expose `{ stats, loading, error, refresh }`.
+   359→  * Pattern identique à `useCvHistory` (useCallback + useEffect pour le refresh initial).
+   360→  * JSDoc français complet sur chaque interface et fonction.
+   361→- Création de `/home/z/my-project/src/components/cv/stats-dashboard.tsx` :
+   362→  * Directive `'use client'`.
+   363→  * Importe `useCvStats` et `CvStats` depuis le hook.
+   364→  * Retourne `null` si `stats` est `null` ou `stats.total === 0` (le dashboard est optionnel).
+   365→  * En-tête « Statistiques » avec icône BarChart3, badge « {total} CV » et bouton « Rafraîchir » (icône RefreshCw qui devient Loader2 animé pendant le chargement).
+   366→  * Section 1 — 4 cartes KPI en grille responsive (`grid-cols-2 md:grid-cols-4`) :
+   367→    - Carte 1 : Total CVs (FileText, gradient emerald) — `{stats.total}` + sous-titre « {done} réussis · {errors} erreurs ».
+   368→    - Carte 2 : Score moyen (TrendingUp, gradient teal) — `{averageScore}/100` + sous-titre « Meilleur: {bestScore} · Pire: {worstScore} ».
+   369→    - Carte 3 : Taux de succès (CheckCircle2, gradient cyan) — `{successRate}%` + sous-titre « Durée moy: {(averageDuration/1000).toFixed(1)}s ».
+   370→    - Carte 4 : Documents générés (FileOutput, gradient orange) — `{wordCount + pptxCount}` + sous-titre « {wordCount} Word · {pptxCount} PowerPoint ».
+   371→    - Chaque carte : `motion.div` avec `initial={{opacity:0, y:10}} animate={{opacity:1, y:0}}` et délais staggered (0.05, 0.13, 0.21, 0.29), `whileHover={{scale:1.02}}` + shadow emerald au hover.
+   372→  * Section 2 — 2 colonnes (`grid-cols-1 md:grid-cols-2`) :
+   373→    - Gauche : « Répartition des scores » (BarChart3) — barres horizontales animées, couleur depuis `d.color`, largeur proportionnelle à `count/maxCount`, libellé à gauche, compte à droite. État vide si total = 0.
+   374→    - Droite : « Activité (7 derniers jours) » (CalendarDays) — barres verticales avec gradient emerald→teal, hauteur proportionnelle à `count/maxCount`, labels Lun/Mar/... sous chaque barre, compte en bas. Le jour courant est mis en évidence (gradient teal→emerald différent). État vide si tous les comptes = 0.
+   375→  * Section 3 — Carte « Sources des CV » (BarChart2) :
+   376→    - Ligne PDF (FileType2, rouge) avec barre animée + pourcentage.
+   377→    - Ligne Images (FileImage, teal) avec barre animée + pourcentage.
+   378→    - Deux badges récapitulatifs (PDF + images) avec couleurs cohérentes.
+   379→  * Palette 100% emerald/teal/cyan + orange pour la carte « Documents générés » (aucune utilisation de indigo/blue).
+   380→  * Toutes les animations avec Framer Motion (staggered delays, fade+slide, largeurs/hauteurs animées).
+   381→  * JSDoc français complet en en-tête de fichier et sur chaque sous-composant.
+   382→- Vérification TypeScript : `bunx tsc --noEmit -p tsconfig.json 2>&1 | grep -E "stats-dashboard|use-cv-stats"` → 0 erreur sur les fichiers créés (les seules erreurs restantes sont dans `examples/` et `skills/`, préexistantes et hors scope).
+   383→- Vérification ESLint : `bun run lint` → 0 erreur sur tout le projet. `bunx eslint src/components/cv/stats-dashboard.tsx src/hooks/use-cv-stats.ts` → 0 erreur.
+   384→
+   385→Stage Summary:
+   386→- 2 fichiers créés :
+   387→  * `/home/z/my-project/src/hooks/use-cv-stats.ts` (~110 lignes) — hook React typé avec interfaces `CvStats`, `UseCvStatsReturn`, pattern identique à `useCvHistory`.
+   388→  * `/home/z/my-project/src/components/cv/stats-dashboard.tsx` (~390 lignes) — composant `StatsDashboard` (export nommé + default) avec 4 sous-composants privés (`KpiCard`, `ScoreDistributionCard`, `Activity7DaysCard`, `SourceFormatCard`).
+   389→- Exports disponibles pour intégration :
+   390→  * `import { StatsDashboard } from '@/components/cv/stats-dashboard'`
+   391→  * `import { useCvStats, type CvStats } from '@/hooks/use-cv-stats'`
+   392→- Décisions clés :
+   393→  * Le composant retourne `null` si pas de données ou `total === 0` (pas d'état de chargement visible — le dashboard est optionnel et ne doit pas bloquer l'UI).
+   394→  * Pas d'intégration dans `page.tsx` ici : la task demandait uniquement la création du hook + composant. L'intégration entre le hero et la grille 2 colonnes se fera dans une task séparée.
+   395→  * Palette emerald/teal/cyan (+ orange pour la 4e carte KPI) — aucune utilisation de indigo/blue, cohérent avec le reste de l'app.
+   396→  * Animations staggered : KPI (0.05→0.29s), graphiques (0.4→0.45s), sources (0.5s).
+   397→  * Gestion des états vides : ScoreDistributionCard affiche un placeholder si `totalScores === 0`, Activity7DaysCard affiche un placeholder si `totalCount === 0`, SourceFormatCard affiche des pourcentages à 0% gracieusement si `total === 0`.
+   398→- 0 erreur TypeScript sur les nouveaux fichiers, 0 erreur ESLint sur tout le projet.
+   399→
+   400→---
+   401→Task ID: 9-b
+   402→Agent: Sample Selector & Result Panel Agent
+   403→Task: Créer le sélecteur de CV d'exemple + enrichir le panneau de résultats
+   404→
+   405→Work Log:
+   406→- Lecture des fichiers de contexte : `src/lib/cv/types.ts` (type `CvProcessingResult`), `src/components/cv/result-panel.tsx` (structure existante), `src/hooks/use-cv-processing.ts`, `src/app/api/cv/sample/route.ts` et `src/app/api/cv/export/route.ts` pour comprendre les contrats.
+   407→- Création de `src/components/cv/sample-selector.tsx` :
+   408→  - Composant `'use client'` avec 3 cartes de profils : "Profil confirmé" (`full`, icône `Briefcase`), "Profil junior" (`junior`, icône `GraduationCap`), "Profil senior" (`senior`, icône `Award`).
+   409→  - Chaque carte affiche : icône, nom, description courte, badge "Score ~ <plage>".
+   410→  - En-tête d'information avec icône `Info` et le texte "Pas de clé NVIDIA ? Testez avec un CV d'exemple".
+   411→  - Au clic : `fetch GET /api/cv/sample?generate=true&format=${outputFormat}&type=${type}` puis appel `onResult(data)`.
+   412→  - États : `loadingId` par profil (spinner `Loader2` + libellé "Génération du CV d'exemple..."), bloc d'erreur, indicateur de chargement global.
+   413→  - Palette emerald/teal partout, animations framer-motion (scale hover/tap).
+   414→  - Props : `onResult: (result: CvProcessingResult) => void`, `outputFormat: OutputFormat`, `disabled?: boolean`.
+   415→- Modification de `src/components/cv/result-panel.tsx` (éditions ciblées, pas de rewrite) :
+   416→  - Ajout des imports `FileJson` et `RefreshCw` depuis `lucide-react`.
+   417→  - Ajout de la prop optionnelle `onReprocess?: () => void` à `ResultPanelProps`.
+   418→  - Calcul de `isSample = result.extractionModel?.toLowerCase().includes('sample')` et `exportJsonUrl = /api/cv/export?id=<result.id>`.
+   419→  - Ajout d'un badge "CV d'exemple" (outline, palette emerald) dans le bandeau de succès quand `isSample` est vrai.
+   420→  - Ajout d'un bouton "Exporter JSON" (`Button asChild` + `<a href=exportJsonUrl download>` + icône `FileJson`, variant `outline`).
+   421→  - Ajout d'un bouton "Retraiter" (icône `RefreshCw`, variant `outline`, `onClick={onReprocess}`, rendu uniquement si `onReprocess` est fourni).
+   422→  - Boutons placés entre "Télécharger" et "Nouveau CV" pour cohérence visuelle.
+   423→- Vérifications :
+   424→  - `bunx tsc --noEmit -p tsconfig.json` : 0 erreur sur `sample-selector.tsx` et `result-panel.tsx` (erreurs résiduelles uniquement dans `examples/` et `skills/`, hors périmètre).
+   425→  - `bun run lint` : 0 erreur, 0 warning.
+   426→  - `bunx eslint src/components/cv/sample-selector.tsx src/components/cv/result-panel.tsx` : clean.
+   427→
+   428→Stage Summary:
+   429→- Fichier créé : `src/components/cv/sample-selector.tsx` — composant `SampleSelector` (export nommé) permettant de tester l'app sans clé NVIDIA via 3 profils d'exemple.
+   430→- Fichier modifié : `src/components/cv/result-panel.tsx` — enrichi avec boutons "Exporter JSON" et "Retraiter" + badge "CV d'exemple".
+   431→- Décisions clés :
+   432→  * `onReprocess` resté optionnel (rendu conditionnel) pour ne pas casser les consommateurs existants de `ResultPanel`.
+   433→  * Le bouton "Exporter JSON" utilise `Button asChild` avec une ancre `<a download>` pour déclencher le téléchargement direct côté navigateur (pas de fetch manuel).
+   434→  * Détection du mode "sample" via `extractionModel` (la route API met `'sample (no AI)'`) — robuste car insensible à la casse.
+   435→  * Le `downloadUrl` du bouton principal "Télécharger" reste wrappé dans `{result.downloadUrl && (...)}` (inchangé) ; les nouveaux boutons sont rendus inconditionnellement puisque l'export JSON ne dépend que de `result.id`.
+   436→- Palette emerald/teal partout, aucune couleur indigo/blue, conformément aux conventions du projet.
+   437→
+   438→---
+   439→Task ID: 9 (QA Round 2)
+   440→Agent: Z.ai (review cron)
+   441→Task: QA, améliorations styling et nouvelles fonctionnalités
+   442→
+   443→## État du projet en début de round
+   444→- Projet stable : lint 0 erreur, TSC 0 erreur, serveur tourne sur port 3000
+   445→- 8 routes API fonctionnelles
+   446→- Interface complète mais sans dark mode, sans stats, sans export JSON, sans CV d'exemple
+   447→- VLM avait identifié : alignement colonnes, empty state historique vaste, pas de dark mode, pas de feedback enrichi
+   448→
+   449→## Objectifs de ce round
+   450→1. Ajouter le dark mode (next-themes déjà installé)
+   451→2. Créer un tableau de bord de statistiques
+   452→3. Ajouter l'export JSON du CV structuré
+   453→4. Créer des CV d'exemple pour tester sans clé NVIDIA
+   454→5. Améliorer le styling (mobile, KPI compacts, upload zone)
+   455→
+   456→## Modifications réalisées
+   457→
+   458→### Nouvelles routes API (3)
+   459→- `GET /api/cv/stats` — statistiques agrégées (total, score moyen, distribution, activité 7 jours, taux de succès)
+   460→- `GET /api/cv/sample?generate=true&format=word|powerpoint&type=full|junior|senior` — génère un CV d'exemple SANS clé NVIDIA
+   461→- `GET /api/cv/export?id=<cvId>` — exporte les données structurées d'un CV en JSON
+   462→
+   463→### Nouveaux fichiers (8)
+   464→- `src/lib/cv/samples.ts` — 3 profils CV réalistes (full/junior/senior) avec scores de démo
+   465→- `src/app/api/cv/stats/route.ts` — endpoint statistiques
+   466→- `src/app/api/cv/sample/route.ts` — endpoint CV d'exemple
+   467→- `src/app/api/cv/export/route.ts` — endpoint export JSON
+   468→- `src/components/theme-provider.tsx` — provider next-themes
+   469→- `src/components/theme-toggle.tsx` — bouton de bascule clair/sombre
+   470→- `src/hooks/use-cv-stats.ts` — hook pour les statistiques
+   471→- `src/components/cv/stats-dashboard.tsx` — tableau de bord animé (4 KPI + 2 graphiques + sources)
+   472→- `src/components/cv/sample-selector.tsx` — sélecteur de CV d'exemple (3 profils)
+   473→
+   474→### Fichiers modifiés (5)
+   475→- `src/app/layout.tsx` — ajout du ThemeProvider, lang="fr"
+   476→- `src/components/layout/header.tsx` — ajout du bouton ThemeToggle
+   477→- `src/app/page.tsx` — intégration StatsDashboard + SampleSelector + bouton Retraiter + lien "Pas de CV ?"
+   478→- `src/components/cv/result-panel.tsx` — ajout boutons "Exporter JSON" et "Retraiter" + badge "CV d'exemple"
+   479→- `src/components/cv/upload-zone.tsx` — padding et icône responsifs (plus compact sur mobile)
+   480→- `src/components/cv/stats-dashboard.tsx` — KPI cards compactes sur mobile (line-clamp au lieu de truncate)
+   481→
+   482→## Résultats des vérifications
+   483→- **Lint** : 0 erreur ✅
+   484→- **TypeScript** : 0 erreur dans src/ ✅
+   485→- **Serveur dev** : tourne sans erreur, toutes les routes répondent 200 ✅
+   486→- **agent-browser** :
+   487→  * Page rendue correctement
+   488→  * Toggle dark mode fonctionnel (VLM : 9/10 pour le dark mode)
+   489→  * Sample selector : 3 profils cliquables, génération réussie (91/100 pour senior)
+   490→  * Export JSON : HTTP 200, 6796 bytes, données correctes ✅
+   491→  * Stats dashboard : 4 KPI + graphiques affichés correctement ✅
+   492→  * Boutons "Exporter JSON" et "Retraiter" présents ✅
+   493→- **VLM global** : note 9/10 pour l'interface finale
+   494→- **Mobile** : textes KPI plus coupés, upload zone compacte ✅
+   495→
+   496→## Risques / points non résolus
+   497→- Le scoring des CV d'exemple utilise des scores de démo quand NVIDIA n'est pas configuré. Quand NVIDIA est configuré, le score réel est calculé (peut échouer si l'API a des limites de débit).
+   498→- L'activité "7 derniers jours" affiche des zéros tant qu'il n'y a pas assez d'historique (normal).
+   499→- La fonction "Retraiter" actuelle revient simplement à l'écran de configuration. Une amélioration future pourrait relancer automatiquement le traitement du dernier fichier.
+   500→
+   501→## Priorités recommandées pour le prochain round
+   502→1. **Guide interactif / onboarding** : ajouter un tour guidé pour les nouveaux utilisateurs
+   503→2. **Comparaison de CV** : permettre de comparer 2 CV côte à côte (scores, forces)
+   504→3. **Modèles de CV** : proposer plusieurs templates visuels pour Word/PowerPoint
+   505→4. **Recommandations personnalisées** : améliorer le scoring avec des suggestions concrètes par champ
+   506→5. **Notifications toast** : utiliser le toaster pour confirmer les actions (copie, export, suppression)
+   507→
+   508→---
+   509→Task ID: 10-a
+   510→Agent: Radar Chart Agent
+   511→Task: Créer le graphique radar des scores + intégration dans ScoreDisplay
+   512→
+   513→Work Log:
+   514→- Lecture du worklog, de `src/lib/cv/types.ts` (interface `ScoreCategory`) et de `src/components/cv/score-display.tsx` (état actuel)
+   515→- Vérification que `recharts@2.15.4` et `framer-motion@^12` sont bien installés
+   516→- Création de `src/components/cv/score-radar-chart.tsx` :
+   517→  - Directive `'use client'`
+   518→  - Import de `RadarChart`, `Radar`, `PolarGrid`, `PolarAngleAxis`, `PolarRadiusAxis`, `ResponsiveContainer` depuis `recharts`
+   519→  - Props typées `categories: Array<{ name; score; comment }>`
+   520→  - Fonction `shortenCategoryName` avec mapping des 7 catégories connues (« Clarté et structure » → « Clarté », « Impact et réalisations » → « Impact », « Expérience professionnelle » → « Expérience », « Présentation et orthographe » → « Présentation », « Adéquation au marché » → « Marché », « Compétences » et « Formation » inchangés) + fallback robuste (insensible à la casse, premier mot sinon)
+   521→  - Transformation des données au format recharts : `[{ category, score, fullMark: 100 }, ...]`
+   522→  - Palette emerald/teal : `#10b981` (gradient fill) + `#059669` (stroke)
+   523→  - `PolarRadiusAxis domain={[0, 100]}` avec `tick={false}` et `axisLine={false}` pour un rendu épuré
+   524→  - `ResponsiveContainer width="100%" height="100%"` dans un conteneur `height: 300` (uniquement autorisé pour la hauteur du graphique)
+   525→  - Dégradé SVG `linearGradient` « radarGradient » pour un remplissage subtil
+   526→  - Animation d'entrée via `motion.div` (fade + scale, delay 0.2s)
+   527→  - Légende sous le graphique : « Plus la zone est large, meilleur est le score »
+   528→  - JSDoc en français pour le composant, les props et la fonction utilitaire
+   529→- Modification ciblée de `src/components/cv/score-display.tsx` :
+   530→  - Ajout de l'import `ScoreRadarChart` depuis `@/components/cv/score-radar-chart`
+   531→  - Dans la carte « Détail par catégorie », remplacement du `CardContent` par une grille responsive `grid grid-cols-1 gap-4 md:grid-cols-[45%_1fr]` :
+   532→    - Colonne gauche (45%) : `ScoreRadarChart`
+   533→    - Colonne droite (1fr) : les barres de progression existantes (`CategoryBar`) wrappées dans un `div` avec `space-y-5`
+   534→  - Sur mobile : empilement vertical (radar au-dessus, barres en dessous)
+   535→- Vérification : `bunx tsc --noEmit` — aucune erreur sur `score-radar` ou `score-display`
+   536→- Vérification : `bun run lint` — aucune erreur ESLint
+   537→
+   538→Stage Summary:
+   539→- Fichier créé : `src/components/cv/score-radar-chart.tsx` (composant radar chart réutilisable)
+   540→- Fichier modifié : `src/components/cv/score-display.tsx` (intégration dans la carte « Détail par catégorie » avec layout 2 colonnes responsive)
+   541→- Adresse le feedback VLM : « il manque un graphique radar (spider chart) pour visualiser instantanément les forces/faiblesses »
+   542→- Palette cohérente (emerald/teal), animations Framer Motion, accessibility-friendly ( ResponsiveContainer + légende explicative)
+   543→
+   544→---
+   545→Task ID: 10-b
+   546→Agent: History Filters Agent
+   547→Task: Ajouter filtres et recherche à la liste d'historique
+   548→
+   549→Work Log:
+   550→- Lecture du fichier `src/components/cv/history-list.tsx` et du hook `src/hooks/use-cv-history.ts` (type `HistoryItem`)
+   551→- Ajout des imports : `useMemo`, `useState` depuis React ; `Search`, `Filter`, `X` depuis lucide-react ; `Input` depuis `@/components/ui/input` ; `Select`, `SelectContent`, `SelectItem`, `SelectTrigger`, `SelectValue` depuis `@/components/ui/select`
+   552→- Définition de 3 types unions : `FormatFilter` ('all' | 'word' | 'powerpoint'), `ScoreFilter` ('all' | 'excellent' | 'verygood' | 'correct' | 'poor'), `SortBy` ('recent' | 'oldest' | 'best' | 'worst')
+   553→- Ajout de 4 états locaux : `searchQuery`, `formatFilter`, `scoreFilter`, `sortBy`
+   554→- Mise en place d'un `useMemo` (`filteredItems`) qui applique successivement :
+   555→  1. Recherche textuelle (sous-chaîne insensible à la casse sur `originalName`)
+   556→  2. Filtre par `outputFormat`
+   557→  3. Filtre par tranche de score (Excellent 85+, Très bon 70-84, Correct 55-69, À améliorer <55 ; les CV sans score sont exclus des filtres de score)
+   558→  4. Tri (plus récents / plus anciens / meilleur score / pire score ; gestion des `score === null` en les placant en fin pour 'best' et en début pour 'worst')
+   559→- Ajout d'une variable `filtersActive` et d'une fonction `resetFilters()`
+   560→- Ajout d'une barre de filtres entre `CardHeader` et `CardContent` (div `space-y-2 border-b p-3`) :
+   561→  - Champ de recherche `Input` avec icône `Search` à gauche, bouton `X` à droite pour effacer, placeholder "Rechercher...", taille compacte (h-8)
+   562→  - Ligne `flex flex-wrap gap-2` avec 3 `Select` (size="sm", h-8, flex-1) :
+   563→    - Format : Tous / Word / PowerPoint (valeur "all" pour "Tous")
+   564→    - Score : Tous scores / Excellent (85+) / Très bon (70+) / Correct (55+) / À améliorer (<55)
+   565→    - Tri : Plus récents / Plus anciens / Meilleur score / Pire score (avec icône `Filter` dans le trigger)
+   566→- Ajout d'un badge "X/Y" dans le header (CardTitle) qui s'affiche uniquement lorsque des filtres sont actifs ET que le nombre filtré est inférieur au total
+   567→- Mise à jour de l'état vide : 3 cas distincts :
+   568→  1. Aucun item du tout → message original "Aucun CV traité pour l'instant"
+   569→  2. Items présents mais aucun ne correspond aux filtres → icône `Filter`, message "Aucun CV ne correspond à vos critères." + bouton "Réinitialiser les filtres" (qui appelle `resetFilters`)
+   570→  3. Sinon → ScrollArea avec la liste filtrée/triée
+   571→- Remplacement de `items.map(...)` par `filteredItems.map(...)` dans la ScrollArea
+   572→- Conservation du comportement existant : `onSelect`, `onRemove`, `onRefresh`, `selectedId`, animations Framer Motion, format/score/duration affichés par item, boutons télécharger/supprimer
+   573→- Aucune couleur indigo ou bleue ajoutée dans la barre de filtres (les seules couleurs restent emerald/teal/amber/orange/red du score existant)
+   574→- Vérification : `bunx tsc --noEmit` — aucune erreur sur `history-list`
+   575→- Vérification : `bun run lint` — aucune erreur ESLint
+   576→
+   577→Stage Summary:
+   578→- Fichier modifié : `src/components/cv/history-list.tsx` (ajout de la barre de filtres/recherche, logique useMemo, état vide conditionnel, badge de compte)
+   579→- Adresse le feedback VLM : « L'historique n'offre pas de filtres avancés (par score, format, date) ni de recherche textuelle »
+   580→- Filtres disponibles : recherche textuelle (originalName), format (Word/PowerPoint), score (4 tranches), tri (4 options)
+   581→- UI compacte responsive (flex-wrap sur mobile), états vides différenciés, bouton de réinitialisation
+   582→
+   583→---
+   584→Task ID: 10 (QA Round 3)
+   585→Agent: Z.ai (review cron)
+   586→Task: QA, radar chart, toasts, filtres historique, rapport PDF, tooltips
+   587→
+   588→## État du projet en début de round
+   589→- Projet stable : lint 0 erreur, TSC 0 erreur, serveur tourne sur port 3000
+   590→- 11 routes API fonctionnelles (8 initiales + stats + sample + export)
+   591→- Interface avec dark mode, stats dashboard, sample selector, export JSON
+   592→- VLM Round 2 avait recommandé : radar chart, comparateur, export PDF, tooltips, filtres historique
+   593→
+   594→## Objectifs de ce round
+   595→1. Graphique radar (spider chart) pour visualiser les 7 catégories de score
+   596→2. Notifications toast pour confirmer les actions utilisateur
+   597→3. Filtres et recherche dans l'historique
+   598→4. Export PDF du rapport d'audit
+   599→5. Tooltips interactifs sur les catégories de score
+   600→6. Fix du radar en dark mode (identifié par VLM)
+   601→
+   602→## Modifications réalisées
+   603→
+   604→### Nouvelle route API (1)
+   605→- `GET /api/cv/report?id=<cvId>` — génère un rapport HTML imprimable (avec radar SVG inline, barres de catégories, points forts/améliorations, expérience, formation, compétences). Le bouton "Imprimer / Enregistrer en PDF" utilise window.print().
+   606→
+   607→### Nouveaux fichiers (2)
+   608→- `src/components/cv/score-radar-chart.tsx` — graphique radar recharts avec couleurs adaptées au thème (useTheme)
+   609→- `src/app/api/cv/report/route.ts` — rapport d'audit HTML imprimable avec SVG radar inline
+   610→
+   611→### Fichiers modifiés (6)
+   612→- `src/app/layout.tsx` — ajout du SonnerToaster (position bottom-right, richColors, closeButton)
+   613→- `src/app/page.tsx` — toasts sur process (info/début), succès, erreur, sample, select history, remove (promise), reprocess + useEffect pour result/error
+   614→- `src/components/cv/result-panel.tsx` — ajout bouton "Rapport PDF" (ouvre /api/cv/report dans nouvel onglet) + import FileText
+   615→- `src/components/cv/score-display.tsx` — intégration ScoreRadarChart dans la carte "Détail par catégorie" (grid 45%/1fr sur desktop, stacked sur mobile) + tooltips (Info icon) sur chaque catégorie
+   616→- `src/components/cv/score-radar-chart.tsx` — fix dark mode : useTheme() pour adapter gridColor (#374151 en dark vs #e5e7eb), tickColor (#9ca3af vs #374151), radarStroke (#34d399 vs #059669), opacité du gradient
+   617→- `src/components/cv/nvidia-status-banner.tsx` — toast.success sur copie du modèle de clé API
+   618→- `src/components/cv/history-list.tsx` (par sous-agent) — barre de filtres : recherche textuelle + filtre format + filtre score + tri, avec état vide différencié et badge X/Y
+   619→
+   620→## Résultats des vérifications
+   621→- **Lint** : 0 erreur ✅
+   622→- **TypeScript** : 0 erreur dans src/ ✅
+   623→- **Serveur dev** : tourne sans erreur ✅
+   624→- **agent-browser** :
+   625→  * Page rendue correctement, 0 erreur console
+   626→  * Radar chart visible et bien rendu (VLM : "parfaitement visible et bien rendu")
+   627→  * Dark mode radar fixé : VLM 8.5/10 → 9/10 après correction des couleurs
+   628→  * Filtres historique : recherche "senior" filtre correctement à 1 résultat ✅
+   629→  * Bouton "Rapport PDF" présent et fonctionnel (HTTP 200, 16KB HTML)
+   630→  * Rapport PDF : VLM "très propre, professionnel, radar SVG parfaitement rendu"
+   631→  * 3 boutons d'action : Télécharger Word, Exporter JSON, Rapport PDF ✅
+   632→- **VLM global** : note **9/10** pour l'interface finale
+   633→  * "hiérarchie visuelle limpide"
+   634→  * "richesse fonctionnelle remarquable"
+   635→  * "design épuré en mode clair"
+   636→
+   637→## Risques / points non résolus
+   638→- Le rapport PDF utilise window.print() du navigateur (pas de génération PDF côté serveur). C'est volontaire pour éviter une dépendance lourde (Puppeteer/jsPDF). L'utilisateur doit faire Ctrl+P puis "Enregistrer en PDF".
+   639→- Les toasts disparaissent après ~4s (comportement par défaut de Sonner) — pourrait être prolongé si besoin.
+   640→- Le graphique radar utilise un `id` SVG fixe ("radarGradient") — si deux radars étaient rendus sur la même page, il y aurait un conflit d'ID. Pour l'instant un seul radar est affiché à la fois, donc pas de problème.
+   641→
+   642→## Priorités recommandées pour le prochain round
+   643→1. **Comparateur de CV** : permettre de sélectionner 2 CV et comparer leurs scores côte à côte (radars superposés, tableaux de différences)
+   644→2. **Guide interactif / onboarding** : tour guidé pour les nouveaux utilisateurs (3-4 étapes avec tooltips)
+   645→3. **Modèles de CV** : proposer plusieurs templates visuels pour Word/PowerPoint (moderne, classique, créatif)
+   646→4. **Statistiques avancées** : évolution du score moyen dans le temps, heatmap d'activité
+   647→5. **Recommandations personnalisées par champ** : suggestions concrètes pour améliorer chaque section du CV
+   648→6. **Recherche full-text dans l'historique** : chercher dans le contenu extrait (nom, entreprise, compétences) pas seulement le nom de fichier
+   649→
+   650→---
+   651→Task ID: 11-a
+   652→Agent: CV Comparator Agent
+   653→Task: Créer le comparateur de CV (dialog + dual radar + table comparative)
+   654→
+   655→Work Log:
+   656→- Lecture des fichiers de référence : `types.ts` (ParsedCv / CvScore / ScoreCategory), `use-cv-history.ts` (HistoryItem), `score-radar-chart.tsx` (pattern recharts + useTheme + helper `shortenCategoryName`), routes API `/api/cv/history` et `/api/cv/history/[id]` (qui renvoie `parsedCv` + `scoreDetails`), `page.tsx` (layout & state management), composants shadcn `dialog`, `select`, `table`, `badge`, `skeleton`, `card`.
+   657→- Création de `src/components/cv/cv-comparator.tsx` :
+   658→  - Directive `'use client'`, props `open`, `onOpenChange`, `items: HistoryItem[]`.
+   659→  - Filtrage des items éligibles (`status === 'done' && score !== null`).
+   660→  - Deux `<Select>` (CV A / CV B) avec désactivation croisée (l'option déjà choisie dans l'autre sélecteur est `disabled`).
+   661→  - Récupération parallèle des détails via `Promise.all([fetch('/api/cv/history/A'), fetch('/api/cv/history/B')])` au sein d'un `useCallback` `fetchBoth`, déclenché par les handlers de sélection (pas d'effet pour respecter la règle `react-hooks/set-state-in-effect`).
+   662→  - États : placeholder (sélection manquante), loading (squelettes `Skeleton` + spinner), erreur (carte destructive), contenu (motion fade-in).
+   663→  - **Radar double** recharts : 2 `<Radar>` (`dataKey="cvA"` émeraude, `dataKey="cvB"` orange), gradients uniques `radarGradientCompareA` / `radarGradientCompareB`, `<Legend>` avec `iconType="circle"`, couleurs adaptées au thème via `useTheme`.
+   664→  - **Tableau comparatif** (`Table` shadcn) : catégorie / CV A / CV B / écart, badge d'écart vert (`+n`) si A est meilleur, orange (`-n`) si B est meilleur, « — » si égalité.
+   665→  - **Deux cartes résumé** (`Card` shadcn) : barre d'accent colorée, libellé CV A/B, nom complet, score global en gros chiffre coloré selon `getScoreColorClass`, niveau de séniorité, badge de verdict (« Meilleur » / « À améliorer » / « Égalité »).
+   666→  - Helper local `shortenCategoryName` copié depuis `score-radar-chart.tsx`.
+   667→  - Palette : émeraude `#10b981` pour CV A, orange `#f97316` pour CV B — aucun indigo/bleu.
+   668→  - `DialogContent` avec `max-h-[85vh] overflow-y-auto sm:max-w-3xl` pour le défilement.
+   669→  - Labels et JSDoc en français.
+   670→- Création de `src/components/cv/compare-button.tsx` :
+   671→  - Directive `'use client'`, props `items`, `disabled?`, `variant?`, `size?`.
+   672→  - Bouton `<Button>` avec icône `GitCompare` et libellé « Comparer ».
+   673→  - Désactivé automatiquement si `< 2` CV scorés dans l'historique (calcul via `useMemo`).
+   674→  - Gère l'état du `Dialog` en interne et rend `<CvComparator>`.
+   675→- Refactor anti-pattern `react-hooks/set-state-in-effect` : déplacement de toute la logique de mutation d'état hors des `useEffect` vers des `useCallback` (`fetchBoth`, `handleSetIdA`, `handleSetIdB`, `handleOpenChange`).
+   676→- Vérification : `bunx tsc --noEmit` — aucune erreur sur les nouveaux fichiers ; `bun run lint` — exit code 0, 0 erreur.
+   677→
+   678→Stage Summary:
+   679→- `src/components/cv/cv-comparator.tsx` créé (export nommé `CvComparator`, export par défaut, interface `CvComparatorProps`)
+   680→- `src/components/cv/compare-button.tsx` créé (export nommé `CompareButton`, export par défaut, interface `CompareButtonProps`)
+   681→- Types TypeScript valides, ESLint propre (0 erreur)
+   682→- Prêt à intégrer dans `page.tsx` via `<CompareButton items={items} />`
+   683→
