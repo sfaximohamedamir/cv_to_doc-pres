@@ -39,6 +39,36 @@ export interface Last7DaysItem {
 }
 
 /**
+ * Élément de l'évolution des scores dans le temps (un point par CV réussi).
+ */
+export interface ScoreEvolutionItem {
+  /** Date ISO du traitement */
+  date: string
+  /** Score obtenu (0-100) */
+  score: number
+  /** Nom du fichier source d'origine */
+  name: string
+  /** Format de sortie : `'word'` ou `'powerpoint'` */
+  format: string
+  /** Index chronologique (1-based) */
+  index: number
+  /** Moyenne cumulée des scores jusqu'à ce point (0-100) */
+  cumulativeAvg: number
+}
+
+/**
+ * Élément des statistiques agrégées par format de sortie.
+ */
+export interface FormatStatItem {
+  /** Format de sortie : `'word'` ou `'powerpoint'` */
+  format: string
+  /** Nombre de CV réussis pour ce format */
+  count: number
+  /** Score moyen pour ce format (0-100) */
+  averageScore: number
+}
+
+/**
  * Forme exacte des statistiques renvoyées par `/api/cv/stats`.
  */
 export interface CvStats {
@@ -68,6 +98,10 @@ export interface CvStats {
   scoreDistribution: ScoreDistributionItem[]
   /** Activité des 7 derniers jours */
   last7Days: Last7DaysItem[]
+  /** Évolution chronologique des scores (un point par CV réussi scoré) */
+  scoreEvolution: ScoreEvolutionItem[]
+  /** Statistiques agrégées par format de sortie (Word / PowerPoint) */
+  formatStats: FormatStatItem[]
   /** Taux de succès en pourcentage (0-100) */
   successRate: number
 }

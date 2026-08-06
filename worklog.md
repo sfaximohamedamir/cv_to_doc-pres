@@ -774,3 +774,119 @@ Task: QA, comparateur de CV, recommandations par catégorie, export PNG, onboard
 4. **Mode "avant/après"** : permettre de re-soumettre un CV modifié et comparer l'évolution du score
 5. **Benchmarks sectoriels** : comparer le score du CV à la moyenne des CV du même secteur/métier
 6. **Export CSV de l'historique** : pour analyse externe dans Excel/Sheets
+
+---
+Task ID: 12-a
+Agent: Score Evolution Chart Agent
+Task: Créer le graphique d'évolution des scores + intégration dashboard
+
+Work Log:
+- Lecture des fichiers de référence : `use-cv-stats.ts`, `stats-dashboard.tsx`, `score-radar-chart.tsx` et de la route API `/api/cv/stats` pour comprendre la structure existante et la palette (emerald/teal/cyan)
+- Modification de `src/hooks/use-cv-stats.ts` :
+  - Ajout de l'interface `ScoreEvolutionItem` (date, score, name, format, index, cumulativeAvg) avec JSDoc français
+  - Ajout de l'interface `FormatStatItem` (format, count, averageScore) avec JSDoc français
+  - Ajout des deux nouveaux champs `scoreEvolution` et `formatStats` à l'interface `CvStats`
+- Création de `src/components/cv/score-evolution-chart.tsx` :
+  - Directive `'use client'`
+  - Props typées `ScoreEvolutionChartProps` avec `data: ScoreEvolutionPoint[]`
+  - Utilisation de `LineChart`, `Line`, `XAxis`, `YAxis`, `CartesianGrid`, `Tooltip`, `ResponsiveContainer`, `Legend` depuis recharts
+  - 2 séries : « Score » (emerald `#10b981`, ligne pleine avec dots r=3, activeDot r=5) et « Moyenne cumulée » (teal `#0d9488`, `strokeDasharray="5 5"`, sans dot)
+  - X-axis `dataKey="index"` avec label « # » en `insideBottomRight`, `allowDecimals={false}`
+  - Y-axis `domain={[0, 100]}` avec label « Score » en `insideLeft` orienté -90°
+  - `CartesianGrid` avec `strokeDasharray="3 3"`, opacité subtile adaptée au thème, `vertical={false}`
+  - Tooltip personnalisé via `content={<CustomTooltip />}` : affiche nom du CV (truncate 220px), « CV #N · Format · JJ/MM/AAAA », score (emerald) et moyenne cumulée (teal) avec pastilles de couleur
+  - `useTheme` de next-themes pour grid/axis/tick colors (gridColor `#374151` dark / `#e5e7eb` light, tickColor `#9ca3af` / `#374151`, axisStroke `#4b5563` / `#d1d5db`) — même approche que `score-radar-chart.tsx`
+  - `ResponsiveContainer` height 280, marges `{ top: 8, right: 16, bottom: 8, left: -8 }`
+  - État vide : si `data.length < 2`, message « Pas encore assez de données pour afficher l'évolution (minimum 2 CV). » avec icône TrendingUp, hauteur 280px identique pour éviter le saut de layout
+  - `motion.div` d'entrée (opacity + y, duration 0.5, delay 0.1, ease easeOut)
+  - Helper `formatFrDate` (DD/MM/YYYY via Date native, pas de nouvelle dépendance) et `formatLabel` (Word/PowerPoint)
+  - Animations recharts activées (Score 900ms, Moyenne cumulée 1100ms, easing ease-out)
+  - JSDoc français complet en tête de fichier et sur chaque fonction/export
+  - Aucune couleur indigo/bleu — palette strictement emerald/teal
+- Modification de `src/components/cv/stats-dashboard.tsx` (éditions ciblées, pas de rewrite) :
+  - Import de `ScoreEvolutionChart` depuis `@/components/cv/score-evolution-chart`
+  - Nouvelle section pleine largeur insérée ENTRE la grille KPI (Section 1) et la grille 2 colonnes (Section 2), nommée « Section 1.5 : évolution des scores dans le temps »
+  - Wrapper `motion.div` (opacity + y, duration 0.4, delay 0.35) contenant un `Card` avec `CardHeader` (icône `TrendingUp` emerald + `CardTitle` « Évolution des scores ») et `CardContent` avec `<ScoreEvolutionChart data={stats.scoreEvolution} />`
+  - `TrendingUp` déjà importé depuis lucide-react (pas de nouvel import icône)
+- Correctif bonus sur `src/app/api/cv/stats/route.ts` : le select Prisma oubliait `originalName` alors que `scoreEvolution` l'utilise (TS2339 sur `r.originalName`). Ajout de `originalName: true` au `select` pour faire passer la compilation — sinon le build entier était cassé par cette route.
+
+Vérifications :
+- `bunx tsc --noEmit -p tsconfig.json 2>&1 | grep -E "score-evolution|use-cv-stats|stats-dashboard"` → 0 erreur (grep exit 1, aucun match)
+- Full `tsc --noEmit` : 0 erreur dans `src/` (les 4 erreurs résiduelles sont dans `examples/` et `skills/`, pré-existantes et hors scope)
+- `bun run lint` → exit 0, propre
+
+Stage Summary:
+- `src/hooks/use-cv-stats.ts` modifié : interfaces `ScoreEvolutionItem` et `FormatStatItem` ajoutées, champs `scoreEvolution` et `formatStats` ajoutés à `CvStats`
+- `src/components/cv/score-evolution-chart.tsx` créé (nouveau) : line chart recharts responsive avec 2 séries (Score emerald + Moyenne cumulée teal dashed), tooltip custom, état vide, dark mode via useTheme, animation Framer Motion
+- `src/components/cv/stats-dashboard.tsx` modifié : import + nouvelle section Card pleine largeur « Évolution des scores » entre les KPI et la grille 2 colonnes
+- `src/app/api/cv/stats/route.ts` modifié : ajout de `originalName: true` au select Prisma (correctif compilation TS)
+- Types valides, ESLint propre (0 erreur), palette emerald/teal respectée, labels français
+
+---
+Task ID: 12 (QA Round 5)
+Agent: Z.ai (review cron)
+Task: QA, évolution des scores, recherche full-text, export CSV, templates CV
+
+## État du projet en début de round
+- Projet très stable : lint 0 erreur, TSC 0 erreur, serveur tourne sur port 3000
+- 12 routes API, interface riche avec comparateur, onboarding, radar, toasts, etc.
+- VLM Round 4 : note 9/10, a recommandé stats avancées, recherche full-text, templates
+
+## Objectifs de ce round
+1. Graphique d'évolution des scores dans le temps (line chart)
+2. Recherche full-text dans l'historique (nom, email, entreprise, compétence)
+3. Export CSV de l'historique
+4. Sélecteur de templates visuels (Moderne, Classique, Créatif, Minimaliste)
+
+## Modifications réalisées
+
+### Nouvelles routes API (2)
+- `GET /api/cv/search?q=<query>&limit=<n>` — recherche full-text dans extractedText + structuredData (nom, email, entreprises, compétences, formations, langues) avec snippets et matchedField
+- `GET /api/cv/csv` — export CSV de l'historique (13 colonnes, BOM UTF-8, échappement RFC 4180)
+
+### Route API modifiée (1)
+- `GET /api/cv/stats` — ajout de `scoreEvolution` (série chronologique avec score + cumulativeAvg) et `formatStats` (score moyen par format)
+
+### Nouveaux fichiers (5)
+- `src/lib/cv/templates.ts` — 4 templates (modern/classic/creative/minimal) avec palettes, styles de puces, emoji
+- `src/components/cv/score-evolution-chart.tsx` — line chart recharts (Score + Moyenne cumulée, custom tooltip, dark mode, empty state)
+- `src/components/cv/full-text-search.tsx` — dialog de recherche avec debounce 350ms, snippets, matchedField badge, états vides
+- `src/components/cv/template-selector.tsx` — 4 cartes cliquables avec aperçu de palette + checkmark
+- `src/app/api/cv/search/route.ts` — route de recherche full-text
+- `src/app/api/cv/csv/route.ts` — route d'export CSV
+
+### Fichiers modifiés (5)
+- `src/app/api/cv/stats/route.ts` — ajout scoreEvolution + formatStats
+- `src/hooks/use-cv-stats.ts` — ajout champs scoreEvolution + formatStats à l'interface CvStats
+- `src/hooks/use-cv-processing.ts` — ajout paramètre `template` à processCv
+- `src/components/cv/stats-dashboard.tsx` — intégration ScoreEvolutionChart (section full-width entre KPIs et grille 2 colonnes)
+- `src/app/page.tsx` — intégration TemplateSelector (étape 3), boutons Rechercher + CSV + Comparer dans la colonne historique, état searchOpen, passage du template au processCv
+
+## Résultats des vérifications
+- **Lint** : 0 erreur ✅
+- **TypeScript** : 0 erreur dans src/ ✅
+- **Serveur dev** : tourne sans erreur ✅
+- **agent-browser** :
+  * Template selector : 4 cartes visibles (Moderne sélectionné par défaut avec checkmark) ✅
+  * Boutons Rechercher/CSV/Comparer : visibles dans la colonne historique ✅
+  * Recherche full-text : dialog s'ouvre, recherche "Marie" trouve sample-full.cv avec snippet ✅
+  * CSV export : HTTP 200, 654 bytes, 13 colonnes avec BOM UTF-8 ✅
+  * Evolution chart : 2 lignes tracées (Score verte + Moyenne cumulée pointillée teal) ✅
+- **VLM** :
+  * Templates : "bien rendus et particulièrement explicites, palette de couleurs représentative"
+  * Evolution chart : "ligne verte pleine + ligne pointillée teal, progression des 4 CV"
+  * Note globale : **9/10** — "interface intuitive, évaluation IA pertinente, personnalisation avancée"
+
+## Risques / points non résolus
+- Les templates visuels sont sélectionnés et passés au backend, mais les convertisseurs Word/PowerPoint utilisent encore le style par défaut. L'application complète des templates nécessiterait de modifier `word-converter.ts` et `powerpoint-converter.ts` pour utiliser `getTemplate(templateId)`.
+- La recherche full-text scanne les enregistrements en mémoire (jusqu'à 500) — pour de très gros volumes, une indexation SQLite FTS5 serait préférable.
+- L'export CSV est limité aux métadonnées (pas le contenu extrait complet) pour garder le fichier lisible.
+- 104 fichiers TypeScript dans src/ — la complexité augmente mais la structure reste modulaire.
+
+## Priorités recommandées pour le prochain round
+1. **Application des templates** : modifier word-converter.ts et powerpoint-converter.ts pour utiliser les couleurs/styles de CvTemplate sélectionné
+2. **Mode "avant/après"** : re-soumettre un CV modifié et comparer l'évolution du score
+3. **Benchmarks sectoriels** : comparer le score à la moyenne des CV du même métier
+4. **Heatmap d'activité** : activité par heure/jour dans le stats dashboard
+5. **Notifications push** : alerter l'utilisateur quand un long traitement est terminé
+6. **Raccourcis clavier** : Ctrl+K pour la recherche, Ctrl+P pour traiter, etc.

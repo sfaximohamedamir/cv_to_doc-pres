@@ -38,6 +38,7 @@ export interface UseCvProcessingReturn {
     file: File
     outputFormat: OutputFormat
     language?: string
+    template?: string
   }) => Promise<void>
   /// Réinitialise l'état
   reset: () => void
@@ -70,10 +71,12 @@ export function useCvProcessing(): UseCvProcessingReturn {
       file,
       outputFormat,
       language,
+      template,
     }: {
       file: File
       outputFormat: OutputFormat
       language?: string
+      template?: string
     }) => {
       setIsProcessing(true)
       setError(null)
@@ -88,6 +91,7 @@ export function useCvProcessing(): UseCvProcessingReturn {
         formData.append('file', file)
         formData.append('outputFormat', outputFormat)
         if (language) formData.append('language', language)
+        if (template) formData.append('template', template)
 
         updateStep('upload', 'done')
         updateStep('extract', 'running')

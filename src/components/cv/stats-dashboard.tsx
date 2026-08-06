@@ -45,6 +45,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { useCvStats, type CvStats } from '@/hooks/use-cv-stats'
+import { ScoreEvolutionChart } from '@/components/cv/score-evolution-chart'
 
 /* -------------------------------------------------------------------------- */
 /*                              Sous-composants                               */
@@ -509,6 +510,25 @@ export function StatsDashboard() {
               />
             ))}
           </div>
+
+          {/* Section 1.5 : évolution des scores dans le temps (pleine largeur) */}
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, ease: 'easeOut', delay: 0.35 }}
+          >
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <TrendingUp className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+                  Évolution des scores
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ScoreEvolutionChart data={stats.scoreEvolution} />
+              </CardContent>
+            </Card>
+          </motion.div>
 
           {/* Section 2 : deux colonnes (distribution + activité) */}
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">

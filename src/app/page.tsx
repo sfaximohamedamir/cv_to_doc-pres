@@ -26,6 +26,9 @@ import {
   Gauge,
   Languages,
   Lightbulb,
+  Search,
+  Download,
+  Palette,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -47,6 +50,9 @@ import { ResultPanel } from '@/components/cv/result-panel'
 import { HistoryList } from '@/components/cv/history-list'
 import { CompareButton } from '@/components/cv/compare-button'
 import { OnboardingGuide } from '@/components/cv/onboarding-guide'
+import { FullTextSearch } from '@/components/cv/full-text-search'
+import { TemplateSelector } from '@/components/cv/template-selector'
+import type { CvTemplateId } from '@/lib/cv/templates'
 import { toast } from 'sonner'
 import { StatsDashboard } from '@/components/cv/stats-dashboard'
 import { SampleSelector } from '@/components/cv/sample-selector'
@@ -97,6 +103,8 @@ export default function Home() {
   const [viewedHistory, setViewedHistory] = useState<CvProcessingResult | null>(null)
   const [loadingHistory, setLoadingHistory] = useState(false)
   const [showSamples, setShowSamples] = useState(false)
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [template, setTemplate] = useState<CvTemplateId>('modern')
 
   const { isProcessing, steps, result, error, processCv, reset } =
     useCvProcessing()
@@ -128,11 +136,11 @@ export default function Home() {
     toast.info('Traitement en cours…', {
       description: `Analyse de "${file.name}" avec NVIDIA Nemotron`,
     })
-    await processCv({ file, outputFormat, language: lang })
+    await processCv({ file, outputFormat, language: lang, template })
     // Rafraîchir l'historique et les stats après le traitement
     refresh()
     refreshStats()
-  }, [file, outputFormat, language, processCv, refresh, refreshStats, toast])
+  }, [file, outputFormat, language, processCv, refresh, refreshStats, toast, template])
 
   const handleReset = useCallback(() => {
     reset()
@@ -340,11 +348,24 @@ export default function Home() {
                     />
                   </div>
 
+                  {/* Template visuel */}
+                  <div className="space-y-2">
+                    <Label className="flex items-center gap-1.5 text-sm font-medium">
+                      <Palette className="h-3.5 w-3.5" />
+                      3. Modèle visuel
+                    </Label>
+                    <TemplateSelector
+                      value={template}
+                      onChange={setTemplate}
+                      disabled={isProcessing}
+                    />
+                  </div>
+
                   {/* Langue */}
                   <div className="space-y-2">
                     <Label className="flex items-center gap-1.5 text-sm font-medium">
                       <Languages className="h-3.5 w-3.5" />
-                      3. Langue du CV (optionnel)
+                      4. Langue du CV (optionnel)
                     </Label>
                     <Select
                       value={language}
@@ -481,8 +502,28 @@ export default function Home() {
 
           {/* Colonne droite : historique */}
           <div className="space-y-3 lg:sticky lg:top-20 lg:h-[calc(100vh-6rem)]">
-            <div className="flex justify-end">
-              <CompareButton items={items} />
+            <div className="flex items-center justify-between gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setSearchOpen(true)}
+                disabled={items.length === 0}
+                className="gap-1.5"
+              >
+                <Search className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Rechercher</span>
+              </Button>
+              <div className="flex gap-2">
+                {items.length > 0 && (
+                  <Button asChild variant="outline" size="sm" className="gap-1.5">
+                    <a href="/api/cv/csv" download>
+                      <Download className="h-3.5 w-3.5" />
+                      <span className="hidden sm:inline">CSV</span>
+                    </a>
+                  </Button>
+                )}
+                <CompareButton items={items} />
+              </div>
             </div>
             <HistoryList
               items={items}
@@ -491,6 +532,11 @@ export default function Home() {
               onRefresh={refresh}
               onRemove={handleRemove}
               selectedId={selectedHistoryId}
+            />
+            <FullTextSearch
+              open={searchOpen}
+              onOpenChange={setSearchOpen}
+              onSelectResult={handleSelectHistory}
             />
           </div>
         </div>

@@ -35,6 +35,7 @@ export async function GET() {
         sourceType: true,
         durationMs: true,
         createdAt: true,
+        originalName: true,
       },
     })
 
@@ -103,6 +104,45 @@ export async function GET() {
       })
     }
 
+    // Évolution des scores dans le temps (série chronologique)
+    // On récupère tous les CV réussis avec un score, triés par date croissante.
+    const scoreEvolution = done
+      .filter((r) => r.score !== null)
+      .map((r) => ({
+        date: r.createdAt.toISOString(),
+        score: r.score as number,
+        name: r.originalName,
+        format: r.outputFormat,
+      }))
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+      .map((item, i) => ({
+        ...item,
+        index: i + 1,
+        // Score moyen cumulé à ce point
+        cumulativeAvg: Math.round(
+          done
+            .filter((r) => r.score !== null)
+            .map((r) => r.score as number)
+            .sort((a, b) => a - b)
+            .slice(0, i + 1)
+            .reduce((sum, s) => sum + s, 0) / (i + 1)
+        ),
+      }))
+
+    // Statistiques par format (score moyen par format de sortie)
+    const formatStats = ['word', 'powerpoint'].map((fmt) => {
+      const formatRecords = done.filter((r) => r.outputFormat === fmt && r.score !== null)
+      const formatScores = formatRecords.map((r) => r.score as number)
+      return {
+        format: fmt,
+        count: formatRecords.length,
+        averageScore:
+          formatScores.length > 0
+            ? Math.round(formatScores.reduce((a, b) => a + b, 0) / formatScores.length)
+            : 0,
+      }
+    })
+
     return NextResponse.json({
       total,
       done: done.length,
@@ -117,6 +157,8 @@ export async function GET() {
       averageDuration,
       scoreDistribution,
       last7Days,
+      scoreEvolution,
+      formatStats,
       successRate: total > 0 ? Math.round((done.length / total) * 100) : 0,
     })
   } catch (error) {
