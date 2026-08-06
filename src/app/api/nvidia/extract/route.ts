@@ -12,7 +12,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import path from 'path'
 import { extractCvFromBuffer } from '@/lib/parsers/cv-extractor'
 import { isSupportedImage } from '@/lib/parsers/image-parser'
-import { isNvidiaConfigured } from '@/lib/nvidia/client'
+import { isNvidiaConfiguredAsync } from '@/lib/nvidia/client'
 
 export const runtime = 'nodejs'
 export const maxDuration = 90
@@ -31,9 +31,9 @@ function resolveMimeType(fileName: string, declaredMime: string): string {
 }
 
 export async function POST(request: NextRequest) {
-  if (!isNvidiaConfigured()) {
+  if (!(await isNvidiaConfiguredAsync())) {
     return NextResponse.json(
-      { error: "Clé API NVIDIA non configurée (NVIDIA_API_KEY).", code: 'NVIDIA_NOT_CONFIGURED' },
+      { error: "Clé API NVIDIA non configurée. Ajoutez-la dans les paramètres de l'application (bouton ⚙️).", code: 'NVIDIA_NOT_CONFIGURED' },
       { status: 503 }
     )
   }

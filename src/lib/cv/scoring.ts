@@ -17,7 +17,7 @@ import type { CvScore, ParsedCv } from '@/lib/cv/types';
 import {
   callNvidiaTextModel,
   extractJsonFromResponse,
-  isNvidiaConfigured,
+  isNvidiaConfiguredAsync,
 } from '@/lib/nvidia/client';
 import { SUPER_MODEL_ID } from '@/lib/nvidia/models';
 import { buildScoringPrompt } from '@/lib/nvidia/prompts';
@@ -138,11 +138,11 @@ function validateCvScoreShape(obj: unknown): asserts obj is CvScore {
 export async function scoreCv(params: ScoreCvParams): Promise<ScoreCvResult> {
   const { parsedCv, language } = params;
 
-  if (!isNvidiaConfigured()) {
+  if (!(await isNvidiaConfiguredAsync())) {
     throw new Error(
-      "La variable d'environnement NVIDIA_API_KEY n'est pas définie. " +
-        "Configurez-la dans .env.local (ou l'environnement de déploiement) " +
-        'pour activer le scoring du CV.'
+      "Aucune clé API NVIDIA configurée. " +
+        "Ajoutez-la dans les paramètres de l'application (bouton ⚙️) " +
+        "ou définissez la variable d'environnement NVIDIA_API_KEY."
     );
   }
 

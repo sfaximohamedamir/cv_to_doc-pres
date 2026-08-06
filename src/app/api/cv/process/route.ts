@@ -26,7 +26,7 @@ import {
   generatePowerPointCv,
   getPowerPointFileName,
 } from '@/lib/converters/powerpoint-converter'
-import { isNvidiaConfigured } from '@/lib/nvidia/client'
+import { isNvidiaConfiguredAsync } from '@/lib/nvidia/client'
 import type {
   CvProcessingResult,
   OutputFormat,
@@ -93,12 +93,12 @@ export const maxDuration = 120
 export async function POST(request: NextRequest) {
   const startTime = Date.now()
 
-  // 0. Vérifier que la clé API NVIDIA est configurée.
-  if (!isNvidiaConfigured()) {
+  // 0. Vérifier que la clé API NVIDIA est configurée (env ou base de données).
+  if (!(await isNvidiaConfiguredAsync())) {
     return NextResponse.json(
       {
         error:
-          "La clé API NVIDIA n'est pas configurée. Définissez la variable d'environnement NVIDIA_API_KEY.",
+          "La clé API NVIDIA n'est pas configurée. Ajoutez-la dans les paramètres de l'application (bouton ⚙️) ou définissez NVIDIA_API_KEY dans .env.local.",
         code: 'NVIDIA_NOT_CONFIGURED',
       },
       { status: 503 }

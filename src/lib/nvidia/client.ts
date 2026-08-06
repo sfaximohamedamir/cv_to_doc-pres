@@ -14,54 +14,85 @@
 import OpenAI from 'openai';
 
 import { OMNI_MODEL_ID, SUPER_MODEL_ID } from '@/lib/nvidia/models';
+import { resolveNvidiaApiKey, isNvidiaKeyConfigured } from '@/lib/settings';
 
 /** URL de base de l'API NVIDIA, compatible OpenAI. */
 export const NVIDIA_BASE_URL = 'https://integrate.api.nvidia.com/v1';
 
 /** Instance mise en cache du client OpenAI pointant vers NVIDIA. */
 let cachedClient: OpenAI | null = null;
+/** Clé API utilisée pour créer le client en cache (pour invalider le cache si la clé change). */
+let cachedApiKey: string | null = null;
 
 /**
- * Indique si la variable d'environnement `NVIDIA_API_KEY` est définie.
+ * Indique si la clé API NVIDIA est configurable via l'environnement.
  *
- * Utilisé par les routes API pour décider d'afficher un message d'erreur
- * explicite lorsque le service NVIDIA n'est pas configuré.
+ * Version synchrone : vérifie uniquement la variable d'environnement.
+ * Pour vérifier également la base de données, utiliser `isNvidiaConfiguredAsync()`.
  *
- * @returns `true` si la clé API est présente, `false` sinon.
+ * @returns `true` si `NVIDIA_API_KEY` est présente dans l'environnement.
  */
 export function isNvidiaConfigured(): boolean {
   return Boolean(process.env.NVIDIA_API_KEY);
 }
 
 /**
+ * Version asynchrone de `isNvidiaConfigured()`.
+ *
+ * Vérifie à la fois la variable d'environnement ET la base de données
+ * (paramètre saisi par l'utilisateur dans l'interface).
+ *
+ * @returns `true` si la clé API est disponible (env ou DB).
+ */
+export async function isNvidiaConfiguredAsync(): Promise<boolean> {
+  return isNvidiaKeyConfigured();
+}
+
+/**
  * Retourne un client OpenAI configuré pour appeler l'API NVIDIA.
  *
- * Le client est mis en cache pour éviter de recréer une instance à chaque
- * appel. La clé API est lue depuis la variable d'environnement `NVIDIA_API_KEY`.
+ * Version asynchrone : la clé API est résolue depuis l'environnement
+ * (priorité 1) ou la base de données (priorité 2, saisie via l'interface).
+ *
+ * Le client est mis en cache tant que la clé API ne change pas.
  *
  * @returns Une instance du SDK OpenAI pointant vers `NVIDIA_BASE_URL`.
- * @throws {Error} Si `NVIDIA_API_KEY` n'est pas définie dans l'environnement.
+ * @throws {Error} Si aucune clé API n'est configurée.
  */
-export function getNvidiaClient(): OpenAI {
-  if (cachedClient) {
-    return cachedClient;
-  }
+export async function getNvidiaClient(): Promise<OpenAI> {
+  const apiKey = await resolveNvidiaApiKey();
 
-  const apiKey = process.env.NVIDIA_API_KEY;
   if (!apiKey) {
     throw new Error(
-      "La variable d'environnement NVIDIA_API_KEY n'est pas définie. " +
-        "Configurez-la dans .env.local (ou l'environnement de déploiement) " +
-        'pour activer les appels aux modèles NVIDIA.'
+      "Aucune clé API NVIDIA configurée. " +
+        "Ajoutez-la dans les paramètres de l'application (bouton ⚙️ dans l'en-tête) " +
+        "ou définissez la variable d'environnement NVIDIA_API_KEY dans .env.local."
     );
+  }
+
+  // Réutiliser le client en cache si la clé n'a pas changé.
+  if (cachedClient && cachedApiKey === apiKey) {
+    return cachedClient;
   }
 
   cachedClient = new OpenAI({
     apiKey,
     baseURL: NVIDIA_BASE_URL,
   });
+  cachedApiKey = apiKey;
 
   return cachedClient;
+}
+
+/**
+ * Invalide le cache du client NVIDIA.
+ *
+ * À appeler après une modification de la clé API (dans l'interface)
+ * pour forcer la recréation du client avec la nouvelle clé.
+ */
+export function invalidateNvidiaClientCache(): void {
+  cachedClient = null;
+  cachedApiKey = null;
 }
 
 /**
@@ -99,7 +130,7 @@ export async function callNvidiaTextModel(
     maxTokens = 4096,
   } = params;
 
-  const client = getNvidiaClient();
+  const client = await getNvidiaClient();
 
   try {
     const completion = await client.chat.completions.create({
@@ -186,7 +217,7 @@ export async function callNvidiaOmniModel(
     );
   }
 
-  const client = getNvidiaClient();
+  const client = await getNvidiaClient();
 
   // Construction du contenu utilisateur au format vision OpenAI.
   const userContent: Array<

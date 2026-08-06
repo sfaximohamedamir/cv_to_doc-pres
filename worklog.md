@@ -1069,3 +1069,80 @@ Task: Système de tags de recrutement, indice ⌘K, fix Prisma Client
 4. **Benchmarks sectoriels** : comparer le score à la moyenne des CV du même métier
 5. **Export filtré** : exporter en CSV seulement les CV correspondant aux filtres actifs
 6. **Raccourcis supplémentaires** : Ctrl+1/2/3 pour basculer entre les templates
+
+---
+Task ID: 15 (User Request)
+Agent: Z.ai
+Task: Ajouter un panneau de paramètres dans l'application pour saisir la clé API NVIDIA
+
+## Demande utilisateur
+L'utilisateur veut pouvoir saisir sa clé API NVIDIA directement dans l'interface de l'application, sans avoir à modifier le fichier .env manuellement.
+
+## Modifications réalisées
+
+### Schéma de base de données
+- `prisma/schema.prisma` : ajout du modèle `Setting` (key/value/sensitive) pour stocker les paramètres applicatifs
+- `bun run db:push` pour synchroniser la base
+
+### Nouvelle bibliothèque
+- `src/lib/settings.ts` — gestionnaire de paramètres : `getSetting`, `setSetting`, `deleteSetting`, `getNvidiaApiKey`, `isNvidiaKeyConfigured`, `resolveNvidiaApiKey` (priorité env > DB)
+
+### Nouvelles routes API (2)
+- `GET/PUT/DELETE /api/settings/nvidia-key` — gère la clé API NVIDIA (statut, enregistrement, suppression). La clé n'est JAMAIS renvoyée au client.
+- `POST /api/settings/test` — teste la validité de la clé avec un appel réel à l'API NVIDIA (message minimal au modèle Nemotron Super)
+
+### Client NVIDIA modifié
+- `src/lib/nvidia/client.ts` :
+  * `getNvidiaClient()` devient **async** et résout la clé via `resolveNvidiaApiKey()` (env OU DB)
+  * Cache intelligent : le client est recréé si la clé change
+  * Nouvelle fonction `invalidateNvidiaClientCache()` pour forcer la recréation après un changement
+  * Nouvelle fonction `isNvidiaConfiguredAsync()` qui vérifie env + DB
+  * L'ancienne `isNvidiaConfigured()` synchrone reste pour compatibilité (env uniquement)
+
+### Routes API migrées vers async
+- `src/app/api/status/route.ts` — utilise `isNvidiaConfiguredAsync()` + renvoie `nvidiaKeySource` ("env" | "database" | "none")
+- `src/app/api/cv/process/route.ts` — utilise `isNvidiaConfiguredAsync()`
+- `src/app/api/nvidia/extract/route.ts` — utilise `isNvidiaConfiguredAsync()`
+- `src/app/api/nvidia/score/route.ts` — utilise `isNvidiaConfiguredAsync()`
+- `src/app/api/cv/sample/route.ts` — utilise `isNvidiaConfiguredAsync()` (2 occurrences)
+- `src/lib/cv/scoring.ts` — `scoreCv()` utilise `isNvidiaConfiguredAsync()`
+- `src/lib/parsers/cv-extractor.ts` — `extractCvFromBuffer()` utilise `isNvidiaConfiguredAsync()`
+
+### Nouveau composant UI
+- `src/components/cv/settings-dialog.tsx` — dialog de paramètres complet :
+  * Statut de la clé (Configurée/Non configurée + source env/DB)
+  * Champ de saisie sécurisé (type password + toggle eye pour afficher)
+  * Validation du format (nvapi- + longueur minimale)
+  * Boutons : Enregistrer (vert gradient), Tester (outline), Supprimer (si clé en DB)
+  * Test de la clé avec feedback visuel (succès vert / erreur rouge)
+  * Section d'aide : instructions pas à pas pour obtenir une clé sur build.nvidia.com
+  * Toasts de confirmation pour chaque action
+
+### Composants modifiés
+- `src/components/layout/header.tsx` — ajout bouton ⚙️ Paramètres + SettingsDialog intégré + badge NVIDIA cliquable (ouvre les paramètres si non configuré)
+- `src/components/cv/nvidia-status-banner.tsx` — ajout boutons "Configurer" et "Ouvrir les paramètres" qui ouvrent le SettingsDialog + SettingsDialog intégré
+
+## Résultats des vérifications
+- **Lint** : 0 erreur ✅
+- **TypeScript** : 0 erreur dans src/ ✅
+- **Serveur dev** : tourne sans erreur après redémarrage (touch next.config.ts) ✅
+- **API tests via curl** :
+  * GET /api/settings/nvidia-key → {configured: false, source: "none", canDelete: false} ✅
+  * PUT avec clé valide → {success: true, configured: true, source: "database"} ✅
+  * GET /api/status → {nvidiaConfigured: true, nvidiaKeySource: "database"} ✅
+  * DELETE → {success: true, configured: false, source: "none"} ✅
+- **agent-browser** :
+  * Bouton ⚙️ visible dans le header ✅
+  * Badge "Configurer NVIDIA" cliquable ✅
+  * Bannière avec bouton "Configurer" ✅
+  * Dialog s'ouvre avec champ de saisie, boutons, statut, aide ✅
+  * Saisie + Enregistrement → statut passe à "Configurée" + toast de succès ✅
+  * Bouton Supprimer apparaît (source: database) → suppression réussie ✅
+- **VLM** : "dialog très bien rendu, interface propre, moderne et professionnelle, hiérarchie logique"
+
+## Architecture de sécurité
+- La clé API n'est JAMMAIS renvoyée au client (seul le statut configuré/non configuré l'est)
+- La clé est stockée dans la table Setting avec le flag `sensitive: true`
+- Si la clé provient de l'env, elle ne peut pas être supprimée depuis l'UI (canDelete: false)
+- Le test de clé utilise un appel minimal (max_tokens: 5) pour ne pas consommer de quota
+- Messages d'erreur différenciés : 401 (invalide), 403 (interdit), 429 (rate limit)

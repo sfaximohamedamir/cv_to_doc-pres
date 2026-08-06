@@ -23,7 +23,7 @@ import {
   getPowerPointFileName,
 } from '@/lib/converters/powerpoint-converter'
 import { scoreCv } from '@/lib/cv/scoring'
-import { isNvidiaConfigured } from '@/lib/nvidia/client'
+import { isNvidiaConfiguredAsync } from '@/lib/nvidia/client'
 import type { ParsedCv, CvScore, OutputFormat, CvProcessingResult } from '@/lib/cv/types'
 import type { CvTemplateId } from '@/lib/cv/templates'
 import { SAMPLE_CVS } from '@/lib/cv/samples'
@@ -87,7 +87,7 @@ export async function GET(request: NextRequest) {
         structuredData: JSON.stringify(sample),
         language: sample.detectedLanguage || 'fr',
         extractionModel: 'sample (no AI)',
-        scoringModel: isNvidiaConfigured() ? 'pending' : 'sample (no AI)',
+        scoringModel: (await isNvidiaConfiguredAsync()) ? 'pending' : 'sample (no AI)',
         fileSize: 0,
         filePath: '',
         durationMs: 0,
@@ -105,7 +105,7 @@ export async function GET(request: NextRequest) {
     // Scoring : si NVIDIA est configuré, on calcule un vrai score ; sinon un score de démo
     let score: CvScore
     let scoringModel: string
-    if (isNvidiaConfigured()) {
+    if (await isNvidiaConfiguredAsync()) {
       try {
         const result = await scoreCv({ parsedCv: sample, language: 'français' })
         score = result.score

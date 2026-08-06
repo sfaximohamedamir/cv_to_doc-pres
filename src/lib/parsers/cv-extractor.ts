@@ -20,7 +20,7 @@ import {
   callNvidiaOmniModel,
   callNvidiaTextModel,
   extractJsonFromResponse,
-  isNvidiaConfigured,
+  isNvidiaConfiguredAsync,
 } from '@/lib/nvidia/client';
 import { OMNI_MODEL_ID, SUPER_MODEL_ID } from '@/lib/nvidia/models';
 import { buildExtractionPrompt } from '@/lib/nvidia/prompts';
@@ -153,11 +153,11 @@ export async function extractCvFromBuffer(
   const { buffer, fileName, mimeType, language } = params;
 
   // 0. Vérification préalable : la clé API NVIDIA doit être configurée.
-  if (!isNvidiaConfigured()) {
+  if (!(await isNvidiaConfiguredAsync())) {
     throw new Error(
-      "La variable d'environnement NVIDIA_API_KEY n'est pas définie. " +
-        "Configurez-la dans .env.local (ou l'environnement de déploiement) " +
-        'pour activer les appels aux modèles NVIDIA.'
+      "Aucune clé API NVIDIA configurée. " +
+        "Ajoutez-la dans les paramètres de l'application (bouton ⚙️) " +
+        "ou définissez la variable d'environnement NVIDIA_API_KEY."
     );
   }
 

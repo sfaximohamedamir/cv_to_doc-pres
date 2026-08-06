@@ -77,3 +77,15 @@ model CvRecord {
   @@index([createdAt])
   @@index([tag])
 }
+
+/// Paramètres de l'application (clé-valeur)
+model Setting {
+  /// Clé du paramètre (ex: "nvidia_api_key")
+  key       String   @id
+  /// Valeur du paramètre (chiffrée si sensible)
+  value     String
+  /// Indique si la valeur est sensible (clé API, mot de passe...)
+  sensitive Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
