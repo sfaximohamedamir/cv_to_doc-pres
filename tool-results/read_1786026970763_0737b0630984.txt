@@ -1,0 +1,1340 @@
+     1→/**
+     2→ * Convertisseur PowerPoint (`.pptx`) pour les CV structurés.
+     3→ *
+     4→ * Ce module transforme un objet {@link ParsedCv} (issu de l'extraction NVIDIA)
+     5→ * en une présentation PowerPoint professionnelle à l'aide de la bibliothèque
+     6→ * `pptxgenjs` v4.
+     7→ *
+     8→ * La présentation générée suit une mise en page moderne 16:9 (LAYOUT_WIDE,
+     9→ * 13,33″ × 7,5″) avec une palette cohérente :
+    10→ * - Couleur d'accent : vert émeraude `#10B981`
+    11→ * - Texte principal : gris foncé `#1F2937`
+    12→ * - Fond clair : `#F9FAFB`
+    13→ * - Fond sombre (couverture, clôture) : `#1F2937`
+    14→ *
+    15→ * Structure des diapositives :
+    16→ *  1. Couverture (nom, titre, contacts, score optionnel)
+    17→ *  2. Profil / résumé (si `summary` est renseigné) + statistiques clés
+    18→ *  3. Expérience professionnelle (1+ diapos, 3 expériences max par diapo)
+    19→ *  4. Formation
+    20→ *  5. Compétences & Langues (deux colonnes)
+    21→ *  6. Projets & Certifications (si au moins une entrée existe)
+    22→ *  7. Clôture « Merci » avec rappel des contacts
+    23→ *
+    24→ * Les libellés sont en français par défaut, et en anglais si
+    25→ * `parsedCv.detectedLanguage` commence par `'en'`.
+    26→ *
+    27→ * @example
+    28→ * ```ts
+    29→ * const buffer = await generatePowerPointCv({ parsedCv, score: 85 })
+    30→ * // → Buffer binaire .pptx prêt à être renvoyé par une route API
+    31→ * ```
+    32→ */
+    33→
+    34→import pptxgen from 'pptxgenjs'
+    35→import type {
+    36→  ParsedCv,
+    37→  WorkExperience,
+    38→  Education,
+    39→  Skill,
+    40→  Language,
+    41→} from '@/lib/cv/types'
+    42→
+    43→// =====================================================================
+    44→// Constantes de style
+    45→// =====================================================================
+    46→
+    47→/** Couleur d'accent principale (vert émeraude). */
+    48→const ACCENT_COLOR = '10B981'
+    49→
+    50→/** Couleur de texte principal (gris foncé slate). */
+    51→const TEXT_COLOR = '1F2937'
+    52→
+    53→/** Couleur secondaire / métadonnées (gris moyen). */
+    54→const MUTED_COLOR = '6B7280'
+    55→
+    56→/** Couleur claire d'accent pour fonds légers (vert très clair). */
+    57→const ACCENT_LIGHT = 'D1FAE5'
+    58→
+    59→/** Fond clair des diapositives de contenu. */
+    60→const LIGHT_BG = 'F9FAFB'
+    61→
+    62→/** Fond sombre (couverture / clôture). */
+    63→const DARK_BG = '1F2937'
+    64→
+    65→/** Texte blanc (sur fond sombre). */
+    66→const WHITE = 'FFFFFF'
+    67→
+    68→/** Blanc atténué (sur fond sombre, pour métadonnées). */
+    69→const WHITE_MUTED = 'CBD5E1'
+    70→
+    71→/** Largeur de page en pouces (LAYOUT_WIDE = 13,33″). */
+    72→const PAGE_W = 13.33
+    73→
+    74→/** Hauteur de page en pouces (LAYOUT_WIDE = 7,5″). */
+    75→const PAGE_H = 7.5
+    76→
+    77→/** Marge latérale standard en pouces. */
+    78→const MARGIN_X = 0.6
+    79→
+    80→/** Marge supérieure standard en pouces. */
+    81→const MARGIN_Y = 0.5
+    82→
+    83→/** Largeur utile de contenu (page - 2 × marge). */
+    84→const CONTENT_W = PAGE_W - MARGIN_X * 2
+    85→
+    86→/** Tailles de police en points. */
+    87→const FONT_SIZE_COVER_NAME = 44
+    88→const FONT_SIZE_COVER_TITLE = 22
+    89→const FONT_SIZE_SECTION_TITLE = 28
+    90→const FONT_SIZE_SECTION_SUBTITLE = 13
+    91→const FONT_SIZE_JOB_TITLE = 17
+    92→const FONT_SIZE_META = 12
+    93→const FONT_SIZE_BODY = 13
+    94→const FONT_SIZE_SMALL = 11
+    95→const FONT_SIZE_STAT = 16
+    96→const FONT_SIZE_THANK_YOU = 54
+    97→const FONT_SIZE_CONTACT = 12
+    98→
+    99→/** Nombre maximum d'expériences par diapositive. */
+   100→const MAX_EXPERIENCES_PER_SLIDE = 3
+   101→
+   102→// =====================================================================
+   103→// Libellés localisés
+   104→// =====================================================================
+   105→
+   106→/** Ensemble de libellés localisés utilisés dans la présentation. */
+   107→interface CvLabels {
+   108→  /** Titre de la diapo « Profil ». */
+   109→  profile: string
+   110→  /** Titre de la section expérience professionnelle. */
+   111→  workExperience: string
+   112→  /** Titre de la section formation. */
+   113→  education: string
+   114→  /** Titre de la diapo Compétences & Langues. */
+   115→  skillsAndLanguages: string
+   116→  /** Titre de la diapo Projets & Certifications. */
+   117→  projectsAndCertifications: string
+   118→  /** Sous-titre Compétences. */
+   119→  skills: string
+   120→  /** Sous-titre Langues. */
+   121→  languages: string
+   122→  /** Sous-titre Projets. */
+   123→  projects: string
+   124→  /** Sous-titre Certifications. */
+   125→  certifications: string
+   126→  /** Mot de clôture. */
+   127→  thankYou: string
+   128→  /** Préfixe du badge de score. */
+   129→  score: string
+   130→  /** Unité « années d'expérience ». */
+   131→  yearsOfExperience: string
+   132→  /** Unité « expériences professionnelles » (si dates non exploitables). */
+   133→  experiencesCount: string
+   134→  /** Unité « compétences ». */
+   135→  skillsCount: string
+   136→  /** Unité « langues ». */
+   137→  languagesCount: string
+   138→  /** Libellé par défaut pour les compétences sans catégorie. */
+   139→  otherSkills: string
+   140→}
+   141→
+   142→/** Libellés en français. */
+   143→const FRENCH_LABELS: CvLabels = {
+   144→  profile: 'Profil',
+   145→  workExperience: 'Expérience professionnelle',
+   146→  education: 'Formation',
+   147→  skillsAndLanguages: 'Compétences & Langues',
+   148→  projectsAndCertifications: 'Projets & Certifications',
+   149→  skills: 'Compétences',
+   150→  languages: 'Langues',
+   151→  projects: 'Projets',
+   152→  certifications: 'Certifications',
+   153→  thankYou: 'Merci',
+   154→  score: 'Score CV',
+   155→  yearsOfExperience: "années d'expérience",
+   156→  experiencesCount: 'expériences professionnelles',
+   157→  skillsCount: 'compétences',
+   158→  languagesCount: 'langues',
+   159→  otherSkills: 'Autres',
+   160→}
+   161→
+   162→/** Libellés en anglais. */
+   163→const ENGLISH_LABELS: CvLabels = {
+   164→  profile: 'Profile',
+   165→  workExperience: 'Work Experience',
+   166→  education: 'Education',
+   167→  skillsAndLanguages: 'Skills & Languages',
+   168→  projectsAndCertifications: 'Projects & Certifications',
+   169→  skills: 'Skills',
+   170→  languages: 'Languages',
+   171→  projects: 'Projects',
+   172→  certifications: 'Certifications',
+   173→  thankYou: 'Thank you',
+   174→  score: 'CV Score',
+   175→  yearsOfExperience: 'years of experience',
+   176→  experiencesCount: 'professional experiences',
+   177→  skillsCount: 'skills',
+   178→  languagesCount: 'languages',
+   179→  otherSkills: 'Other',
+   180→}
+   181→
+   182→/**
+   183→ * Détermine si la présentation doit utiliser les libellés anglais.
+   184→ * @param parsedCv - CV structuré (utilise `detectedLanguage`).
+   185→ * @returns `true` si la langue détectée commence par `'en'`.
+   186→ */
+   187→function isEnglish(parsedCv: ParsedCv): boolean {
+   188→  return (parsedCv.detectedLanguage ?? '').toLowerCase().startsWith('en')
+   189→}
+   190→
+   191→/**
+   192→ * Retourne le jeu de libellés adapté à la langue détectée.
+   193→ * @param parsedCv - CV structuré.
+   194→ * @returns Les libellés français ou anglais.
+   195→ */
+   196→function getLabels(parsedCv: ParsedCv): CvLabels {
+   197→  return isEnglish(parsedCv) ? ENGLISH_LABELS : FRENCH_LABELS
+   198→}
+   199→
+   200→// =====================================================================
+   201→// Helpers de mise en forme
+   202→// =====================================================================
+   203→
+   204→/**
+   205→ * Découpe un tableau en sous-tableaux de taille fixe.
+   206→ * @param arr - Tableau source.
+   207→ * @param size - Taille de chaque morceau.
+   208→ * @returns Tableau de morceaux.
+   209→ */
+   210→function chunk<T>(arr: T[], size: number): T[][] {
+   211→  if (size <= 0) return arr.length ? [arr] : []
+   212→  const out: T[][] = []
+   213→  for (let i = 0; i < arr.length; i += size) {
+   214→    out.push(arr.slice(i, i + size))
+   215→  }
+   216→  return out
+   217→}
+   218→
+   219→/**
+   220→ * Tronque une chaîne à une longueur maximale, en ajoutant « … » si nécessaire.
+   221→ * @param str - Chaîne source.
+   222→ * @param max - Longueur maximale.
+   223→ * @returns Chaîne éventuellement tronquée.
+   224→ */
+   225→function truncate(str: string, max: number): string {
+   226→  if (!str) return ''
+   227→  return str.length > max ? str.slice(0, max - 1).trimEnd() + '…' : str
+   228→}
+   229→
+   230→/**
+   231→ * Formate une plage de dates à partir d'une date de début et de fin.
+   232→ * @param start - Date de début (texte libre).
+   233→ * @param end - Date de fin (texte libre, ex. « présent »).
+   234→ * @returns La chaîne formatée, ex. `2020 – présent`, ou chaîne vide.
+   235→ */
+   236→function formatDateRange(start?: string, end?: string): string {
+   237→  const parts: string[] = []
+   238→  if (start && start.trim()) parts.push(start.trim())
+   239→  if (end && end.trim()) parts.push(end.trim())
+   240→  if (parts.length === 0) return ''
+   241→  return parts.join(' – ')
+   242→}
+   243→
+   244→/**
+   245→ * Découpe un bloc de description en lignes non vides, pour restituer
+   246→ * les sauts de ligne éventuels extraits par le modèle.
+   247→ * @param description - Texte brut potentiellement multi-lignes.
+   248→ * @returns Tableau de lignes nettoyées.
+   249→ */
+   250→function splitDescriptionLines(description: string | undefined): string[] {
+   251→  if (!description) return []
+   252→  return description
+   253→    .split(/\r?\n/)
+   254→    .map((line) => line.replace(/^[\s•●▪\-*]+/, '').trim())
+   255→    .filter((line) => line.length > 0)
+   256→}
+   257→
+   258→/**
+   259→ * Concatène les éléments de contact non vides avec le séparateur ` | `.
+   260→ * @param parsedCv - CV structuré.
+   261→ * @returns Ligne de contacts, ex. `jean@mail.com | 06 12 34 56 78 | Paris`.
+   262→ */
+   263→function buildContactLine(parsedCv: ParsedCv): string {
+   264→  const p = parsedCv.personalInfo
+   265→  const items: string[] = []
+   266→  if (p.email) items.push(p.email)
+   267→  if (p.phone) items.push(p.phone)
+   268→  if (p.location) items.push(p.location)
+   269→  if (p.linkedin) items.push(p.linkedin)
+   270→  if (p.website) items.push(p.website)
+   271→  if (p.github) items.push(p.github)
+   272→  return items.join('  |  ')
+   273→}
+   274→
+   275→/**
+   276→ * Tente d'estimer le nombre d'années d'expérience à partir des dates
+   277→ * extraites des expériences professionnelles.
+   278→ *
+   279→ * La fonction cherche des années à 4 chiffres (19xx / 20xx) dans les
+   280→ * champs `startDate` et `endDate`. Si au moins deux années distinctes
+   281→ * sont trouvées, la différence est retournée. Si une expérience se
+   282→ * termine par « présent »/« current »/etc., l'année courante est utilisée
+   283→ * comme borne supérieure.
+   284→ *
+   285→ * @param experiences - Liste des expériences professionnelles.
+   286→ * @returns Nombre d'années estimé, ou `null` si non exploitable.
+   287→ */
+   288→function estimateYearsOfExperience(
+   289→  experiences: WorkExperience[],
+   290→): number | null {
+   291→  const years: number[] = []
+   292→  const currentYear = new Date().getFullYear()
+   293→  for (const exp of experiences) {
+   294→    for (const dateStr of [exp.startDate, exp.endDate]) {
+   295→      if (!dateStr) continue
+   296→      const matches = dateStr.match(/\b(19|20)\d{2}\b/g)
+   297→      if (matches) {
+   298→        for (const m of matches) years.push(parseInt(m, 10))
+   299→      }
+   300→    }
+   301→  }
+   302→  if (years.length < 2) return null
+   303→  const min = Math.min(...years)
+   304→  const max = Math.max(...years)
+   305→  const hasPresent = experiences.some((e) =>
+   306→    /présent|present|current|now|aujourd|hui/i.test(e.endDate ?? ''),
+   307→  )
+   308→  const effectiveMax = hasPresent ? Math.max(max, currentYear) : max
+   309→  const diff = effectiveMax - min
+   310→  return diff > 0 ? diff : null
+   311→}
+   312→
+   313→/**
+   314→ * Regroupe les compétences par catégorie, en plaçant les compétences sans
+   315→ * catégorie sous une catégorie « Autres » (traduite).
+   316→ * @param skills - Liste des compétences.
+   317→ * @param otherLabel - Libellé localisé pour la catégorie « Autres ».
+   318→ * @returns Map ordonnée `catégorie → compétences[]`. La catégorie « Autres »
+   319→ *          est toujours en dernière position.
+   320→ */
+   321→function groupSkillsByCategory(
+   322→  skills: Skill[],
+   323→  otherLabel: string,
+   324→): Map<string, Skill[]> {
+   325→  const groups = new Map<string, Skill[]>()
+   326→  for (const skill of skills) {
+   327→    const category = (skill.category ?? '').trim() || otherLabel
+   328→    if (!groups.has(category)) groups.set(category, [])
+   329→    groups.get(category)!.push(skill)
+   330→  }
+   331→  // Réordonner pour placer « Autres » en dernier.
+   332→  if (groups.has(otherLabel)) {
+   333→    const other = groups.get(otherLabel)!
+   334→    groups.delete(otherLabel)
+   335→    groups.set(otherLabel, other)
+   336→  }
+   337→  return groups
+   338→}
+   339→
+   340→// =====================================================================
+   341→// Construction des diapositives
+   342→// =====================================================================
+   343→
+   344→/**
+   345→ * Ajoute une bande de titre de section en haut d'une diapositive de contenu.
+   346→ * Inclut un petit rectangle d'accent à gauche, le titre en gras couleur
+   347→ * d'accent, et une ligne de séparation en bas de la bande.
+   348→ *
+   349→ * @param slide - Diapositive cible.
+   350→ * @param title - Libellé du titre de section.
+   351→ * @param subtitle - Sous-titre optionnel (texte secondaire à droite).
+   352→ */
+   353→function addSectionTitle(
+   354→  slide: pptxgen.Slide,
+   355→  title: string,
+   356→  subtitle?: string,
+   357→): void {
+   358→  // Bandeau d'accent vertical à gauche du titre.
+   359→  slide.addShape('rect', {
+   360→    x: MARGIN_X,
+   361→    y: MARGIN_Y + 0.08,
+   362→    w: 0.12,
+   363→    h: 0.55,
+   364→    fill: { color: ACCENT_COLOR },
+   365→    line: { type: 'none' },
+   366→  })
+   367→  // Titre principal.
+   368→  slide.addText(title, {
+   369→    x: MARGIN_X + 0.25,
+   370→    y: MARGIN_Y,
+   371→    w: CONTENT_W - 0.25,
+   372→    h: 0.7,
+   373→    fontSize: FONT_SIZE_SECTION_TITLE,
+   374→    bold: true,
+   375→    color: TEXT_COLOR,
+   376→    fontFace: 'Calibri',
+   377→    valign: 'middle',
+   378→  })
+   379→  // Sous-titre optionnel (aligné à droite).
+   380→  if (subtitle) {
+   381→    slide.addText(subtitle, {
+   382→      x: MARGIN_X + 0.25,
+   383→      y: MARGIN_Y,
+   384→      w: CONTENT_W - 0.25,
+   385→      h: 0.7,
+   386→      fontSize: FONT_SIZE_SECTION_SUBTITLE,
+   387→      color: MUTED_COLOR,
+   388→      italic: true,
+   389→      align: 'right',
+   390→      valign: 'middle',
+   391→    })
+   392→  }
+   393→  // Ligne de séparation sous le titre.
+   394→  slide.addShape('line', {
+   395→    x: MARGIN_X,
+   396→    y: MARGIN_Y + 0.85,
+   397→    w: CONTENT_W,
+   398→    h: 0,
+   399→    line: { color: ACCENT_COLOR, width: 1.5 },
+   400→  })
+   401→}
+   402→
+   403→/**
+   404→ * Crée la diapositive de couverture : fond sombre, nom en grand,
+   405→ * titre professionnel, contacts en bas, score en coin si fourni.
+   406→ *
+   407→ * @param pptx - Instance pptxgenjs.
+   408→ * @param parsedCv - CV structuré.
+   409→ * @param labels - Libellés localisés.
+   410→ * @param score - Score optionnel sur 100.
+   411→ */
+   412→function addCoverSlide(
+   413→  pptx: pptxgen,
+   414→  parsedCv: ParsedCv,
+   415→  labels: CvLabels,
+   416→  score?: number,
+   417→): void {
+   418→  const slide = pptx.addSlide()
+   419→  slide.background = { color: DARK_BG }
+   420→
+   421→  // Bande d'accent en haut.
+   422→  slide.addShape('rect', {
+   423→    x: 0,
+   424→    y: 0,
+   425→    w: PAGE_W,
+   426→    h: 0.18,
+   427→    fill: { color: ACCENT_COLOR },
+   428→    line: { type: 'none' },
+   429→  })
+   430→
+   431→  // Badge score en haut à droite.
+   432→  if (typeof score === 'number' && Number.isFinite(score)) {
+   433→    const clamped = Math.max(0, Math.min(100, Math.round(score)))
+   434→    slide.addText(`${labels.score} : ${clamped}/100`, {
+   435→      x: PAGE_W - 4.5,
+   436→      y: 0.45,
+   437→      w: 3.9,
+   438→      h: 0.5,
+   439→      fontSize: FONT_SIZE_META,
+   440→      bold: true,
+   441→      color: DARK_BG,
+   442→      align: 'right',
+   443→      valign: 'middle',
+   444→      fill: { color: ACCENT_COLOR },
+   445→      rectRadius: 0.1,
+   446→      shape: 'roundRect',
+   447→    })
+   448→  }
+   449→
+   450→  const p = parsedCv.personalInfo
+   451→  const fullName = (p.fullName ?? '').trim()
+   452→
+   453→  // Nom complet centré.
+   454→  slide.addText(fullName || '—', {
+   455→    x: 0.5,
+   456→    y: 2.3,
+   457→    w: PAGE_W - 1,
+   458→    h: 1.4,
+   459→    fontSize: FONT_SIZE_COVER_NAME,
+   460→    bold: true,
+   461→    color: WHITE,
+   462→    align: 'center',
+   463→    valign: 'middle',
+   464→    fontFace: 'Calibri',
+   465→  })
+   466→
+   467→  // Titre professionnel sous le nom.
+   468→  if (p.title) {
+   469→    slide.addText(p.title, {
+   470→      x: 0.5,
+   471→      y: 3.75,
+   472→      w: PAGE_W - 1,
+   473→      h: 0.7,
+   474→      fontSize: FONT_SIZE_COVER_TITLE,
+   475→      color: ACCENT_LIGHT,
+   476→      italic: true,
+   477→      align: 'center',
+   478→      valign: 'middle',
+   479→      fontFace: 'Calibri',
+   480→    })
+   481→  }
+   482→
+   483→  // Ligne de contacts en bas.
+   484→  const contactLine = buildContactLine(parsedCv)
+   485→  if (contactLine) {
+   486→    slide.addShape('line', {
+   487→      x: PAGE_W / 2 - 3,
+   488→      y: 6.0,
+   489→      w: 6,
+   490→      h: 0,
+   491→      line: { color: ACCENT_COLOR, width: 1 },
+   492→    })
+   493→    slide.addText(contactLine, {
+   494→      x: 0.5,
+   495→      y: 6.15,
+   496→      w: PAGE_W - 1,
+   497→      h: 0.6,
+   498→      fontSize: FONT_SIZE_CONTACT,
+   499→      color: WHITE_MUTED,
+   500→      align: 'center',
+   501→      valign: 'middle',
+   502→      fontFace: 'Calibri',
+   503→    })
+   504→  }
+   505→}
+   506→
+   507→/**
+   508→ * Crée la diapositive « Profil » avec le résumé et des statistiques clés.
+   509→ * Ne fait rien si aucun résumé n'est disponible.
+   510→ *
+   511→ * @param pptx - Instance pptxgenjs.
+   512→ * @param parsedCv - CV structuré.
+   513→ * @param labels - Libellés localisés.
+   514→ */
+   515→function addProfileSlide(
+   516→  pptx: pptxgen,
+   517→  parsedCv: ParsedCv,
+   518→  labels: CvLabels,
+   519→): void {
+   520→  const summary = (parsedCv.personalInfo.summary ?? '').trim()
+   521→  if (!summary) return
+   522→
+   523→  const slide = pptx.addSlide()
+   524→  slide.background = { color: LIGHT_BG }
+   525→
+   526→  addSectionTitle(slide, labels.profile)
+   527→
+   528→  // Bloc de texte du résumé.
+   529→  slide.addText(summary, {
+   530→    x: MARGIN_X,
+   531→    y: MARGIN_Y + 1.1,
+   532→    w: CONTENT_W,
+   533→    h: 3.3,
+   534→    fontSize: FONT_SIZE_BODY,
+   535→    color: TEXT_COLOR,
+   536→    align: 'left',
+   537→    valign: 'top',
+   538→    fontFace: 'Calibri',
+   539→    lineSpacingMultiple: 1.25,
+   540→  })
+   541→
+   542→  // Statistiques clés en bas de la diapo.
+   543→  addStatsBar(slide, parsedCv, labels, MARGIN_Y + 4.7)
+   544→}
+   545→
+   546→/**
+   547→ * Ajoute une barre de statistiques clés (années d'expérience, compétences,
+   548→ * langues) sur une diapositive. Les statistiques vides sont omises.
+   549→ *
+   550→ * @param slide - Diapositive cible.
+   551→ * @param parsedCv - CV structuré.
+   552→ * @param labels - Libellés localisés.
+   553→ * @param y - Position verticale de la barre.
+   554→ */
+   555→function addStatsBar(
+   556→  slide: pptxgen.Slide,
+   557→  parsedCv: ParsedCv,
+   558→  labels: CvLabels,
+   559→  y: number,
+   560→): void {
+   561→  const stats: Array<{ value: string; label: string }> = []
+   562→
+   563→  const years = estimateYearsOfExperience(parsedCv.workExperience)
+   564→  if (years !== null && years > 0) {
+   565→    stats.push({ value: String(years), label: labels.yearsOfExperience })
+   566→  } else if (parsedCv.workExperience.length > 0) {
+   567→    stats.push({
+   568→      value: String(parsedCv.workExperience.length),
+   569→      label: labels.experiencesCount,
+   570→    })
+   571→  }
+   572→  if (parsedCv.skills.length > 0) {
+   573→    stats.push({
+   574→      value: String(parsedCv.skills.length),
+   575→      label: labels.skillsCount,
+   576→    })
+   577→  }
+   578→  if (parsedCv.languages.length > 0) {
+   579→    stats.push({
+   580→      value: String(parsedCv.languages.length),
+   581→      label: labels.languagesCount,
+   582→    })
+   583→  }
+   584→
+   585→  if (stats.length === 0) return
+   586→
+   587→  const slotW = CONTENT_W / stats.length
+   588→  stats.forEach((stat, i) => {
+   589→    const x = MARGIN_X + i * slotW
+   590→    // Encadré léger.
+   591→    slide.addShape('roundRect', {
+   592→      x: x + 0.15,
+   593→      y,
+   594→      w: slotW - 0.3,
+   595→      h: 1.4,
+   596→      fill: { color: WHITE },
+   597→      line: { color: ACCENT_COLOR, width: 1 },
+   598→      rectRadius: 0.08,
+   599→    })
+   600→    // Valeur (chiffre) en grand, couleur d'accent.
+   601→    slide.addText(stat.value, {
+   602→      x: x + 0.15,
+   603→      y: y + 0.15,
+   604→      w: slotW - 0.3,
+   605→      h: 0.7,
+   606→      fontSize: FONT_SIZE_STAT + 14,
+   607→      bold: true,
+   608→      color: ACCENT_COLOR,
+   609→      align: 'center',
+   610→      valign: 'middle',
+   611→      fontFace: 'Calibri',
+   612→    })
+   613→    // Libellé sous la valeur.
+   614→    slide.addText(stat.label, {
+   615→      x: x + 0.15,
+   616→      y: y + 0.85,
+   617→      w: slotW - 0.3,
+   618→      h: 0.45,
+   619→      fontSize: FONT_SIZE_SMALL,
+   620→      color: MUTED_COLOR,
+   621→      align: 'center',
+   622→      valign: 'middle',
+   623→      fontFace: 'Calibri',
+   624→    })
+   625→  })
+   626→}
+   627→
+   628→/**
+   629→ * Construit le tableau de runs de texte décrivant une expérience
+   630→ * professionnelle (titre, méta, lignes de description), pour ajout via
+   631→ * `slide.addText(runs, options)`.
+   632→ *
+   633→ * @param exp - Expérience professionnelle.
+   634→ * @returns Tableau d'objets `TextProps` pour pptxgenjs.
+   635→ */
+   636→function buildExperienceRuns(exp: WorkExperience): pptxgen.TextProps[] {
+   637→  const runs: pptxgen.TextProps[] = []
+   638→
+   639→  // Ligne 1 : intitulé du poste (gras, couleur accent).
+   640→  const title = (exp.title ?? '').trim()
+   641→  if (title) {
+   642→    runs.push({
+   643→      text: title,
+   644→      options: {
+   645→        bold: true,
+   646→        color: ACCENT_COLOR,
+   647→        fontSize: FONT_SIZE_JOB_TITLE,
+   648→        breakLine: true,
+   649→        fontFace: 'Calibri',
+   650→      },
+   651→    })
+   652→  }
+   653→
+   654→  // Ligne 2 : entreprise — dates — localisation (italique muted).
+   655→  const metaParts: string[] = []
+   656→  const company = (exp.company ?? '').trim()
+   657→  if (company) metaParts.push(company)
+   658→  const dateRange = formatDateRange(exp.startDate, exp.endDate)
+   659→  if (dateRange) metaParts.push(dateRange)
+   660→  if (exp.location && exp.location.trim()) metaParts.push(exp.location.trim())
+   661→  if (metaParts.length > 0) {
+   662→    runs.push({
+   663→      text: metaParts.join('  —  '),
+   664→      options: {
+   665→        italic: true,
+   666→        color: MUTED_COLOR,
+   667→        fontSize: FONT_SIZE_META,
+   668→        breakLine: true,
+   669→        fontFace: 'Calibri',
+   670→      },
+   671→    })
+   672→  }
+   673→
+   674→  // Lignes de description (puces).
+   675→  const lines = splitDescriptionLines(exp.description)
+   676→  for (const line of lines) {
+   677→    runs.push({
+   678→      text: line,
+   679→      options: {
+   680→        bullet: { characterCode: '2022' },
+   681→        color: TEXT_COLOR,
+   682→        fontSize: FONT_SIZE_BODY - 1,
+   683→        breakLine: true,
+   684→        fontFace: 'Calibri',
+   685→        paraSpaceAfter: 2,
+   686→      },
+   687→    })
+   688→  }
+   689→
+   690→  return runs
+   691→}
+   692→
+   693→/**
+   694→ * Ajoute une diapositive d'expériences professionnelles contenant jusqu'à
+   695→ * `MAX_EXPERIENCES_PER_SLIDE` expériences.
+   696→ *
+   697→ * @param pptx - Instance pptxgenjs.
+   698→ * @param experiences - Lot d'expériences à afficher.
+   699→ * @param labels - Libellés localisés.
+   700→ * @param slideIndex - Indice du lot (1 pour la première diapo).
+   701→ * @param totalSlides - Nombre total de diapos d'expérience (pour sous-titre).
+   702→ */
+   703→function addExperienceSlide(
+   704→  pptx: pptxgen,
+   705→  experiences: WorkExperience[],
+   706→  labels: CvLabels,
+   707→  slideIndex: number,
+   708→  totalSlides: number,
+   709→): void {
+   710→  const slide = pptx.addSlide()
+   711→  slide.background = { color: LIGHT_BG }
+   712→
+   713→  const subtitle =
+   714→    totalSlides > 1 ? `${slideIndex} / ${totalSlides}` : undefined
+   715→  addSectionTitle(slide, labels.workExperience, subtitle)
+   716→
+   717→  // Hauteur utile sous le titre.
+   718→  const topY = MARGIN_Y + 1.15
+   719→  const usableH = PAGE_H - topY - MARGIN_Y
+   720→  const slotH = usableH / MAX_EXPERIENCES_PER_SLIDE
+   721→
+   722→  experiences.forEach((exp, i) => {
+   723→    const y = topY + i * slotH
+   724→    const runs = buildExperienceRuns(exp)
+   725→    if (runs.length === 0) return
+   726→    slide.addText(runs, {
+   727→      x: MARGIN_X,
+   728→      y,
+   729→      w: CONTENT_W,
+   730→      h: slotH - 0.15,
+   731→      valign: 'top',
+   732→      fontFace: 'Calibri',
+   733→      margin: 0,
+   734→    })
+   735→  })
+   736→}
+   737→
+   738→/**
+   739→ * Crée la diapositive « Formation ».
+   740→ * Ne fait rien si la liste est vide.
+   741→ *
+   742→ * @param pptx - Instance pptxgenjs.
+   743→ * @param education - Liste des formations.
+   744→ * @param labels - Libellés localisés.
+   745→ */
+   746→function addEducationSlide(
+   747→  pptx: pptxgen,
+   748→  education: Education[],
+   749→  labels: CvLabels,
+   750→): void {
+   751→  if (education.length === 0) return
+   752→
+   753→  const slide = pptx.addSlide()
+   754→  slide.background = { color: LIGHT_BG }
+   755→  addSectionTitle(slide, labels.education)
+   756→
+   757→  const topY = MARGIN_Y + 1.2
+   758→  const usableH = PAGE_H - topY - MARGIN_Y
+   759→  const slotH = Math.min(usableH / Math.max(education.length, 1), 1.6)
+   760→
+   761→  education.forEach((edu, i) => {
+   762→    const y = topY + i * slotH
+   763→    const runs: pptxgen.TextProps[] = []
+   764→
+   765→    const degree = (edu.degree ?? '').trim()
+   766→    if (degree) {
+   767→      runs.push({
+   768→        text: degree,
+   769→        options: {
+   770→          bold: true,
+   771→          color: ACCENT_COLOR,
+   772→          fontSize: FONT_SIZE_JOB_TITLE,
+   773→          breakLine: true,
+   774→          fontFace: 'Calibri',
+   775→        },
+   776→      })
+   777→    }
+   778→
+   779→    const metaParts: string[] = []
+   780→    const institution = (edu.institution ?? '').trim()
+   781→    if (institution) metaParts.push(institution)
+   782→    const dateRange = formatDateRange(edu.startDate, edu.endDate)
+   783→    if (dateRange) metaParts.push(dateRange)
+   784→    if (metaParts.length > 0) {
+   785→      runs.push({
+   786→        text: metaParts.join('  —  '),
+   787→        options: {
+   788→          italic: true,
+   789→          color: MUTED_COLOR,
+   790→          fontSize: FONT_SIZE_META,
+   791→          breakLine: true,
+   792→          fontFace: 'Calibri',
+   793→        },
+   794→      })
+   795→    }
+   796→
+   797→    if (edu.field && edu.field.trim()) {
+   798→      runs.push({
+   799→        text: edu.field.trim(),
+   800→        options: {
+   801→          color: TEXT_COLOR,
+   802→          fontSize: FONT_SIZE_BODY - 1,
+   803→          breakLine: true,
+   804→          fontFace: 'Calibri',
+   805→        },
+   806→      })
+   807→    }
+   808→
+   809→    if (edu.description && edu.description.trim()) {
+   810→      runs.push({
+   811→        text: truncate(edu.description.trim(), 240),
+   812→        options: {
+   813→          color: MUTED_COLOR,
+   814→          fontSize: FONT_SIZE_SMALL,
+   815→          italic: true,
+   816→          breakLine: true,
+   817→          fontFace: 'Calibri',
+   818→        },
+   819→      })
+   820→    }
+   821→
+   822→    if (runs.length === 0) return
+   823→    slide.addText(runs, {
+   824→      x: MARGIN_X,
+   825→      y,
+   826→      w: CONTENT_W,
+   827→      h: slotH - 0.1,
+   828→      valign: 'top',
+   829→      fontFace: 'Calibri',
+   830→      margin: 0,
+   831→    })
+   832→  })
+   833→}
+   834→
+   835→/**
+   836→ * Construit la liste de runs pour la colonne « Compétences » regroupées
+   837→ * par catégorie.
+   838→ *
+   839→ * @param skills - Liste des compétences.
+   840→ * @param labels - Libellés localisés.
+   841→ * @returns Tableau de runs pour pptxgenjs.
+   842→ */
+   843→function buildSkillsRuns(
+   844→  skills: Skill[],
+   845→  labels: CvLabels,
+   846→): pptxgen.TextProps[] {
+   847→  const runs: pptxgen.TextProps[] = []
+   848→  const groups = groupSkillsByCategory(skills, labels.otherSkills)
+   849→
+   850→  for (const [category, items] of groups) {
+   851→    runs.push({
+   852→      text: category,
+   853→      options: {
+   854→        bold: true,
+   855→        color: ACCENT_COLOR,
+   856→        fontSize: FONT_SIZE_BODY,
+   857→        breakLine: true,
+   858→        fontFace: 'Calibri',
+   859→        paraSpaceBefore: 4,
+   860→      },
+   861→    })
+   862→    const parts = items.map((s) => {
+   863→      const name = (s.name ?? '').trim()
+   864→      const level = (s.level ?? '').trim()
+   865→      if (!name) return ''
+   866→      return level ? `${name} (${level})` : name
+   867→    })
+   868→    runs.push({
+   869→      text: parts.filter(Boolean).join('  •  '),
+   870→      options: {
+   871→        color: TEXT_COLOR,
+   872→        fontSize: FONT_SIZE_SMALL,
+   873→        breakLine: true,
+   874→        fontFace: 'Calibri',
+   875→        paraSpaceAfter: 6,
+   876→      },
+   877→    })
+   878→  }
+   879→  return runs
+   880→}
+   881→
+   882→/**
+   883→ * Construit la liste de runs pour la colonne « Langues ».
+   884→ *
+   885→ * @param languages - Liste des langues.
+   886→ * @returns Tableau de runs pour pptxgenjs.
+   887→ */
+   888→function buildLanguagesRuns(languages: Language[]): pptxgen.TextProps[] {
+   889→  const runs: pptxgen.TextProps[] = []
+   890→  for (const lang of languages) {
+   891→    const name = (lang.name ?? '').trim()
+   892→    if (!name) continue
+   893→    const level = (lang.level ?? '').trim()
+   894→    runs.push({
+   895→      text: name,
+   896→      options: {
+   897→        bold: true,
+   898→        color: TEXT_COLOR,
+   899→        fontSize: FONT_SIZE_BODY,
+   900→        breakLine: !level,
+   901→        fontFace: 'Calibri',
+   902→      },
+   903→    })
+   904→    if (level) {
+   905→      runs.push({
+   906→        text: ` — ${level}`,
+   907→        options: {
+   908→          italic: true,
+   909→          color: MUTED_COLOR,
+   910→          fontSize: FONT_SIZE_BODY - 1,
+   911→          breakLine: true,
+   912→          fontFace: 'Calibri',
+   913→        },
+   914→      })
+   915→    }
+   916→  }
+   917→  return runs
+   918→}
+   919→
+   920→/**
+   921→ * Crée la diapositive « Compétences & Langues » avec deux colonnes.
+   922→ * Ne fait rien si ni compétences ni langues ne sont présentes.
+   923→ *
+   924→ * @param pptx - Instance pptxgenjs.
+   925→ * @param parsedCv - CV structuré.
+   926→ * @param labels - Libellés localisés.
+   927→ */
+   928→function addSkillsAndLanguagesSlide(
+   929→  pptx: pptxgen,
+   930→  parsedCv: ParsedCv,
+   931→  labels: CvLabels,
+   932→): void {
+   933→  const hasSkills = parsedCv.skills.length > 0
+   934→  const hasLanguages = parsedCv.languages.length > 0
+   935→  if (!hasSkills && !hasLanguages) return
+   936→
+   937→  const slide = pptx.addSlide()
+   938→  slide.background = { color: LIGHT_BG }
+   939→  addSectionTitle(slide, labels.skillsAndLanguages)
+   940→
+   941→  const topY = MARGIN_Y + 1.2
+   942→  const colH = PAGE_H - topY - MARGIN_Y
+   943→  const colW = (CONTENT_W - 0.5) / 2
+   944→  const leftX = MARGIN_X
+   945→  const rightX = MARGIN_X + colW + 0.5
+   946→
+   947→  // Colonne gauche : Compétences.
+   948→  if (hasSkills) {
+   949→    slide.addText(labels.skills, {
+   950→      x: leftX,
+   951→      y: topY,
+   952→      w: colW,
+   953→      h: 0.4,
+   954→      fontSize: FONT_SIZE_BODY + 1,
+   955→      bold: true,
+   956→      color: TEXT_COLOR,
+   957→      fontFace: 'Calibri',
+   958→    })
+   959→    slide.addText(buildSkillsRuns(parsedCv.skills, labels), {
+   960→      x: leftX,
+   961→      y: topY + 0.5,
+   962→      w: colW,
+   963→      h: colH - 0.5,
+   964→      valign: 'top',
+   965→      fontFace: 'Calibri',
+   966→      margin: 0,
+   967→    })
+   968→  }
+   969→
+   970→  // Colonne droite : Langues.
+   971→  if (hasLanguages) {
+   972→    slide.addText(labels.languages, {
+   973→      x: rightX,
+   974→      y: topY,
+   975→      w: colW,
+   976→      h: 0.4,
+   977→      fontSize: FONT_SIZE_BODY + 1,
+   978→      bold: true,
+   979→      color: TEXT_COLOR,
+   980→      fontFace: 'Calibri',
+   981→    })
+   982→    slide.addText(buildLanguagesRuns(parsedCv.languages), {
+   983→      x: rightX,
+   984→      y: topY + 0.5,
+   985→      w: colW,
+   986→      h: colH - 0.5,
+   987→      valign: 'top',
+   988→      fontFace: 'Calibri',
+   989→      margin: 0,
+   990→    })
+   991→  }
+   992→}
+   993→
+   994→/**
+   995→ * Crée la diapositive « Projets & Certifications » avec deux colonnes.
+   996→ * Ne fait rien si ni projets ni certifications ne sont présents.
+   997→ *
+   998→ * @param pptx - Instance pptxgenjs.
+   999→ * @param parsedCv - CV structuré.
+  1000→ * @param labels - Libellés localisés.
+  1001→ */
+  1002→function addProjectsAndCertificationsSlide(
+  1003→  pptx: pptxgen,
+  1004→  parsedCv: ParsedCv,
+  1005→  labels: CvLabels,
+  1006→): void {
+  1007→  const projects = parsedCv.projects ?? []
+  1008→  const certifications = parsedCv.certifications ?? []
+  1009→  if (projects.length === 0 && certifications.length === 0) return
+  1010→
+  1011→  const slide = pptx.addSlide()
+  1012→  slide.background = { color: LIGHT_BG }
+  1013→  addSectionTitle(slide, labels.projectsAndCertifications)
+  1014→
+  1015→  const topY = MARGIN_Y + 1.2
+  1016→  const colH = PAGE_H - topY - MARGIN_Y
+  1017→  const colW = (CONTENT_W - 0.5) / 2
+  1018→  const leftX = MARGIN_X
+  1019→  const rightX = MARGIN_X + colW + 0.5
+  1020→
+  1021→  // Colonne gauche : Projets.
+  1022→  if (projects.length > 0) {
+  1023→    slide.addText(labels.projects, {
+  1024→      x: leftX,
+  1025→      y: topY,
+  1026→      w: colW,
+  1027→      h: 0.4,
+  1028→      fontSize: FONT_SIZE_BODY + 1,
+  1029→      bold: true,
+  1030→      color: TEXT_COLOR,
+  1031→      fontFace: 'Calibri',
+  1032→    })
+  1033→
+  1034→    const runs: pptxgen.TextProps[] = []
+  1035→    projects.forEach((project, i) => {
+  1036→      const name = (project.name ?? '').trim()
+  1037→      if (name) {
+  1038→        runs.push({
+  1039→          text: name,
+  1040→          options: {
+  1041→            bold: true,
+  1042→            color: ACCENT_COLOR,
+  1043→            fontSize: FONT_SIZE_BODY,
+  1044→            breakLine: true,
+  1045→            fontFace: 'Calibri',
+  1046→            paraSpaceBefore: i === 0 ? 0 : 6,
+  1047→          },
+  1048→        })
+  1049→      }
+  1050→      if (project.url && project.url.trim()) {
+  1051→        runs.push({
+  1052→          text: project.url.trim(),
+  1053→          options: {
+  1054→            color: MUTED_COLOR,
+  1055→            italic: true,
+  1056→            fontSize: FONT_SIZE_SMALL,
+  1057→            breakLine: true,
+  1058→            fontFace: 'Calibri',
+  1059→            hyperlink: { url: project.url.trim() },
+  1060→          },
+  1061→        })
+  1062→      }
+  1063→      if (project.description && project.description.trim()) {
+  1064→        runs.push({
+  1065→          text: truncate(project.description.trim(), 220),
+  1066→          options: {
+  1067→            color: TEXT_COLOR,
+  1068→            fontSize: FONT_SIZE_SMALL,
+  1069→            breakLine: true,
+  1070→            fontFace: 'Calibri',
+  1071→            paraSpaceAfter: 4,
+  1072→          },
+  1073→        })
+  1074→      }
+  1075→    })
+  1076→
+  1077→    slide.addText(runs, {
+  1078→      x: leftX,
+  1079→      y: topY + 0.5,
+  1080→      w: colW,
+  1081→      h: colH - 0.5,
+  1082→      valign: 'top',
+  1083→      fontFace: 'Calibri',
+  1084→      margin: 0,
+  1085→    })
+  1086→  }
+  1087→
+  1088→  // Colonne droite : Certifications.
+  1089→  if (certifications.length > 0) {
+  1090→    slide.addText(labels.certifications, {
+  1091→      x: rightX,
+  1092→      y: topY,
+  1093→      w: colW,
+  1094→      h: 0.4,
+  1095→      fontSize: FONT_SIZE_BODY + 1,
+  1096→      bold: true,
+  1097→      color: TEXT_COLOR,
+  1098→      fontFace: 'Calibri',
+  1099→    })
+  1100→
+  1101→    const runs: pptxgen.TextProps[] = []
+  1102→    certifications.forEach((cert, i) => {
+  1103→      const name = (cert.name ?? '').trim()
+  1104→      if (name) {
+  1105→        runs.push({
+  1106→          text: name,
+  1107→          options: {
+  1108→            bold: true,
+  1109→            color: ACCENT_COLOR,
+  1110→            fontSize: FONT_SIZE_BODY,
+  1111→            breakLine: true,
+  1112→            fontFace: 'Calibri',
+  1113→            paraSpaceBefore: i === 0 ? 0 : 6,
+  1114→          },
+  1115→        })
+  1116→      }
+  1117→      const metaParts: string[] = []
+  1118→      if (cert.issuer && cert.issuer.trim()) metaParts.push(cert.issuer.trim())
+  1119→      if (cert.date && cert.date.trim()) metaParts.push(cert.date.trim())
+  1120→      if (metaParts.length > 0) {
+  1121→        runs.push({
+  1122→          text: metaParts.join('  —  '),
+  1123→          options: {
+  1124→            color: MUTED_COLOR,
+  1125→            italic: true,
+  1126→            fontSize: FONT_SIZE_SMALL,
+  1127→            breakLine: true,
+  1128→            fontFace: 'Calibri',
+  1129→            paraSpaceAfter: 4,
+  1130→          },
+  1131→        })
+  1132→      }
+  1133→    })
+  1134→
+  1135→    slide.addText(runs, {
+  1136→      x: rightX,
+  1137→      y: topY + 0.5,
+  1138→      w: colW,
+  1139→      h: colH - 0.5,
+  1140→      valign: 'top',
+  1141→      fontFace: 'Calibri',
+  1142→      margin: 0,
+  1143→    })
+  1144→  }
+  1145→}
+  1146→
+  1147→/**
+  1148→ * Crée la diapositive de clôture « Merci » avec rappel des contacts.
+  1149→ *
+  1150→ * @param pptx - Instance pptxgenjs.
+  1151→ * @param parsedCv - CV structuré.
+  1152→ * @param labels - Libellés localisés.
+  1153→ */
+  1154→function addThankYouSlide(
+  1155→  pptx: pptxgen,
+  1156→  parsedCv: ParsedCv,
+  1157→  labels: CvLabels,
+  1158→): void {
+  1159→  const slide = pptx.addSlide()
+  1160→  slide.background = { color: DARK_BG }
+  1161→
+  1162→  // Bande d'accent en bas.
+  1163→  slide.addShape('rect', {
+  1164→    x: 0,
+  1165→    y: PAGE_H - 0.18,
+  1166→    w: PAGE_W,
+  1167→    h: 0.18,
+  1168→    fill: { color: ACCENT_COLOR },
+  1169→    line: { type: 'none' },
+  1170→  })
+  1171→
+  1172→  // « Merci » centré.
+  1173→  slide.addText(labels.thankYou, {
+  1174→    x: 0.5,
+  1175→    y: 2.2,
+  1176→    w: PAGE_W - 1,
+  1177→    h: 1.6,
+  1178→    fontSize: FONT_SIZE_THANK_YOU,
+  1179→    bold: true,
+  1180→    color: WHITE,
+  1181→    align: 'center',
+  1182→    valign: 'middle',
+  1183→    fontFace: 'Calibri',
+  1184→  })
+  1185→
+  1186→  // Nom du candidat sous « Merci ».
+  1187→  const fullName = (parsedCv.personalInfo.fullName ?? '').trim()
+  1188→  if (fullName) {
+  1189→    slide.addText(fullName, {
+  1190→      x: 0.5,
+  1191→      y: 3.85,
+  1192→      w: PAGE_W - 1,
+  1193→      h: 0.6,
+  1194→      fontSize: FONT_SIZE_COVER_TITLE,
+  1195→      color: ACCENT_LIGHT,
+  1196→      italic: true,
+  1197→      align: 'center',
+  1198→      valign: 'middle',
+  1199→      fontFace: 'Calibri',
+  1200→    })
+  1201→  }
+  1202→
+  1203→  // Ligne de contacts en bas.
+  1204→  const contactLine = buildContactLine(parsedCv)
+  1205→  if (contactLine) {
+  1206→    slide.addShape('line', {
+  1207→      x: PAGE_W / 2 - 3,
+  1208→      y: 5.6,
+  1209→      w: 6,
+  1210→      h: 0,
+  1211→      line: { color: ACCENT_COLOR, width: 1 },
+  1212→    })
+  1213→    slide.addText(contactLine, {
+  1214→      x: 0.5,
+  1215→      y: 5.75,
+  1216→      w: PAGE_W - 1,
+  1217→      h: 0.6,
+  1218→      fontSize: FONT_SIZE_CONTACT,
+  1219→      color: WHITE_MUTED,
+  1220→      align: 'center',
+  1221→      valign: 'middle',
+  1222→      fontFace: 'Calibri',
+  1223→    })
+  1224→  }
+  1225→}
+  1226→
+  1227→// =====================================================================
+  1228→// API publique
+  1229→// =====================================================================
+  1230→
+  1231→/**
+  1232→ * Génère une présentation PowerPoint professionnelle à partir d'un CV
+  1233→ * structuré.
+  1234→ *
+  1235→ * Le fichier généré suit une mise en page 16:9 moderne. Les diapositives
+  1236→ * vides (sections sans données) sont automatiquement omises.
+  1237→ *
+  1238→ * @param params - Paramètres de génération.
+  1239→ * @param params.parsedCv - CV structuré issu de l'extraction NVIDIA.
+  1240→ * @param params.score - Score optionnel sur 100 (affiché sur la couverture).
+  1241→ * @returns Un `Buffer` Node.js contenant le fichier `.pptx` binaire.
+  1242→ *
+  1243→ * @throws {Error} Si la génération échoue ou si le type de sortie renvoyé
+  1244→ *                 par `pptxgenjs` est inattendu.
+  1245→ */
+  1246→export async function generatePowerPointCv(params: {
+  1247→  parsedCv: ParsedCv
+  1248→  score?: number
+  1249→}): Promise<Buffer> {
+  1250→  const { parsedCv, score } = params
+  1251→
+  1252→  const pptx = new pptxgen()
+  1253→  // Layout 16:9 large (13,33″ × 7,5″) — équivalent PowerPoint standard.
+  1254→  pptx.layout = 'LAYOUT_WIDE'
+  1255→  pptx.author = 'Agent de transformation de CV'
+  1256→  pptx.company = 'CV Transformer'
+  1257→  pptx.subject = 'CV généré automatiquement'
+  1258→  const fullName = (parsedCv.personalInfo.fullName ?? '').trim()
+  1259→  pptx.title = fullName ? `CV — ${fullName}` : 'CV'
+  1260→
+  1261→  const labels = getLabels(parsedCv)
+  1262→
+  1263→  // Diapo 1 — Couverture.
+  1264→  addCoverSlide(pptx, parsedCv, labels, score)
+  1265→
+  1266→  // Diapo 2 — Profil (si résumé présent).
+  1267→  addProfileSlide(pptx, parsedCv, labels)
+  1268→
+  1269→  // Diapos 3+ — Expérience professionnelle (1+ diapos, 3 max par diapo).
+  1270→  if (parsedCv.workExperience.length > 0) {
+  1271→    const chunks = chunk(parsedCv.workExperience, MAX_EXPERIENCES_PER_SLIDE)
+  1272→    chunks.forEach((expChunk, i) => {
+  1273→      addExperienceSlide(pptx, expChunk, labels, i + 1, chunks.length)
+  1274→    })
+  1275→  }
+  1276→
+  1277→  // Diapo — Formation.
+  1278→  addEducationSlide(pptx, parsedCv.education, labels)
+  1279→
+  1280→  // Diapo — Compétences & Langues.
+  1281→  addSkillsAndLanguagesSlide(pptx, parsedCv, labels)
+  1282→
+  1283→  // Diapo — Projets & Certifications.
+  1284→  addProjectsAndCertificationsSlide(pptx, parsedCv, labels)
+  1285→
+  1286→  // Diapo finale — Merci.
+  1287→  addThankYouSlide(pptx, parsedCv, labels)
+  1288→
+  1289→  // Génération du buffer binaire.
+  1290→  // En Node, `pptxgenjs` retourne un `Buffer` pour `nodebuffer`, mais le
+  1291→  // type déclaré est une union plus large — on normalise donc défensivement.
+  1292→  const result = await pptx.write({ outputType: 'nodebuffer' })
+  1293→
+  1294→  if (typeof result === 'string') {
+  1295→    throw new Error(
+  1296→      "Type de sortie inattendu pour la présentation PowerPoint : string au lieu d'un buffer.",
+  1297→    )
+  1298→  }
+  1299→  if (Buffer.isBuffer(result)) {
+  1300→    return result
+  1301→  }
+  1302→  if (result instanceof Uint8Array) {
+  1303→    return Buffer.from(result)
+  1304→  }
+  1305→  if (result instanceof ArrayBuffer) {
+  1306→    return Buffer.from(result)
+  1307→  }
+  1308→  // Cas restant (Blob) — non géré côté serveur Node.
+  1309→  throw new Error(
+  1310→    "Type de sortie inattendu pour la présentation PowerPoint (Blob non supporté).",
+  1311→  )
+  1312→}
+  1313→
+  1314→/**
+  1315→ * Génère le nom de fichier suggéré pour la présentation PowerPoint.
+  1316→ *
+  1317→ * Le nom est normalisé : minuscules, diacritiques supprimés, caractères non
+  1318→ * alphanumériques remplacés par `_`, préfixe `CV_`, extension `.pptx`.
+  1319→ *
+  1320→ * @param fullName - Nom complet du candidat.
+  1321→ * @returns Nom de fichier sécurisé, ex. `CV_jean_dupont.pptx`.
+  1322→ *
+  1323→ * @example
+  1324→ * ```ts
+  1325→ * getPowerPointFileName('Jean Dupont')      // → 'CV_jean_dupont.pptx'
+  1326→ * getPowerPointFileName("Marie-Josée O'Neil") // → 'CV_marie_josee_o_neil.pptx'
+  1327→ * getPowerPointFileName('')                   // → 'CV_candidat.pptx'
+  1328→ * ```
+  1329→ */
+  1330→export function getPowerPointFileName(fullName: string): string {
+  1331→  const normalized = (fullName ?? '')
+  1332→    .normalize('NFD')
+  1333→    .replace(/[\u0300-\u036f]/g, '') // suppression des diacritiques
+  1334→    .replace(/[^a-zA-Z0-9]+/g, '_') // tout caractère non alphanumérique → _
+  1335→    .replace(/^_+|_+$/g, '') // trimming des underscores
+  1336→    .toLowerCase()
+  1337→  const base = normalized || 'candidat'
+  1338→  return `CV_${base}.pptx`
+  1339→}
+  1340→

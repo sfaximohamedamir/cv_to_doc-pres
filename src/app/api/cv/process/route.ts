@@ -33,6 +33,7 @@ import type {
   ParsedCv,
   CvScore,
 } from '@/lib/cv/types'
+import type { CvTemplateId } from '@/lib/cv/templates'
 
 /// Taille maximale du fichier téléversé : 10 Mo.
 const MAX_FILE_SIZE = 10 * 1024 * 1024
@@ -118,6 +119,7 @@ export async function POST(request: NextRequest) {
   const file = formData.get('file')
   const outputFormatRaw = formData.get('outputFormat')
   const language = (formData.get('language') as string) || undefined
+  const templateId = (formData.get('template') as string) || undefined
 
   // 2. Valider le fichier.
   if (!file || !(file instanceof File)) {
@@ -200,10 +202,10 @@ export async function POST(request: NextRequest) {
     const fullName = parsedCv.personalInfo.fullName || 'candidat'
 
     if (outputFormat === 'word') {
-      generatedBuffer = await generateWordCv({ parsedCv })
+      generatedBuffer = await generateWordCv({ parsedCv, templateId: templateId as CvTemplateId })
       outputFileName = getWordFileName(fullName)
     } else {
-      generatedBuffer = await generatePowerPointCv({ parsedCv })
+      generatedBuffer = await generatePowerPointCv({ parsedCv, templateId: templateId as CvTemplateId })
       outputFileName = getPowerPointFileName(fullName)
     }
 
@@ -292,6 +294,7 @@ export async function GET() {
       file: 'Fichier du CV (requis)',
       outputFormat: "'word' ou 'powerpoint' (défaut : word)",
       language: 'Langue souhaitée, ex: "français" (optionnel)',
+      template: "Template visuel : 'modern' | 'classic' | 'creative' | 'minimal' (défaut : modern)",
     },
   })
 }

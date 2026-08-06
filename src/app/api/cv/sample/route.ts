@@ -25,6 +25,7 @@ import {
 import { scoreCv } from '@/lib/cv/scoring'
 import { isNvidiaConfigured } from '@/lib/nvidia/client'
 import type { ParsedCv, CvScore, OutputFormat, CvProcessingResult } from '@/lib/cv/types'
+import type { CvTemplateId } from '@/lib/cv/templates'
 import { SAMPLE_CVS } from '@/lib/cv/samples'
 
 export const runtime = 'nodejs'
@@ -45,6 +46,7 @@ export async function GET(request: NextRequest) {
   const type = (searchParams.get('type') || 'full') as keyof typeof SAMPLE_CVS
   const generateDoc = searchParams.get('generate') === 'true'
   const format = (searchParams.get('format') || 'word') as OutputFormat
+  const templateId = (searchParams.get('template') as string) || undefined
 
   const sample = SAMPLE_CVS[type] || SAMPLE_CVS.full
 
@@ -67,10 +69,10 @@ export async function GET(request: NextRequest) {
     const fullName = sample.personalInfo.fullName || 'Candidat Exemple'
 
     if (format === 'powerpoint') {
-      generatedBuffer = await generatePowerPointCv({ parsedCv: sample })
+      generatedBuffer = await generatePowerPointCv({ parsedCv: sample, templateId: templateId as CvTemplateId })
       outputFileName = getPowerPointFileName(fullName)
     } else {
-      generatedBuffer = await generateWordCv({ parsedCv: sample })
+      generatedBuffer = await generateWordCv({ parsedCv: sample, templateId: templateId as CvTemplateId })
       outputFileName = getWordFileName(fullName)
     }
 

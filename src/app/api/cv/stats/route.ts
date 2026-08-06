@@ -143,6 +143,40 @@ export async function GET() {
       }
     })
 
+    // Heatmap d'activité : 7 jours (lignes) x 24 heures (colonnes)
+    // Chaque cellule contient le nombre de CV traités ce jour-là à cette heure.
+    const dayLabels = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim']
+    const heatmapNow = new Date()
+    const activityHeatmap: Array<{
+      day: string
+      dayIndex: number
+      hours: number[]
+    }> = []
+
+    for (let d = 6; d >= 0; d--) {
+      const date = new Date(heatmapNow)
+      date.setDate(date.getDate() - d)
+      date.setHours(0, 0, 0, 0)
+      const nextDate = new Date(date)
+      nextDate.setDate(nextDate.getDate() + 1)
+
+      const hours = new Array(24).fill(0)
+      for (const r of records) {
+        const cd = new Date(r.createdAt)
+        if (cd >= date && cd < nextDate) {
+          hours[cd.getHours()]++
+        }
+      }
+      // Convertir le jour JS (0=Dim..6=Sam) en index Lun-Dim (0=Dim..6=Sam → 1=Lun..0=Dim)
+      const jsDay = date.getDay()
+      const dayIndex = jsDay === 0 ? 6 : jsDay - 1 // 0=Lun, 6=Dim
+      activityHeatmap.push({
+        day: dayLabels[dayIndex],
+        dayIndex,
+        hours,
+      })
+    }
+
     return NextResponse.json({
       total,
       done: done.length,
@@ -159,6 +193,7 @@ export async function GET() {
       last7Days,
       scoreEvolution,
       formatStats,
+      activityHeatmap,
       successRate: total > 0 ? Math.round((done.length / total) * 100) : 0,
     })
   } catch (error) {

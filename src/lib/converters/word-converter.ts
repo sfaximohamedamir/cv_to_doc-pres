@@ -37,25 +37,43 @@ import {
   type ParagraphChild,
 } from 'docx'
 import type { ParsedCv, Skill } from '@/lib/cv/types'
+import { getTemplate, type CvTemplate, type CvTemplateId } from '@/lib/cv/templates'
 
 // =====================================================================
 // Constantes de style
 // =====================================================================
+//
+// Les couleurs d'accent et de fond sont mutables (`let`) car elles sont
+// redéfinies au début de `generateWordCv` en fonction du template visuel
+// demandé. Les couleurs de texte (gris foncé / gris moyen) restent fixes
+// car elles ne dépendent pas du template.
 
-/** Couleur d'accent principale (vert émeraude) pour les titres de section. */
-const ACCENT_COLOR = '10b981'
+/** Couleur d'accent principale (vert émeraude par défaut). */
+let ACCENT_COLOR = '10b981'
+
+/** Couleur d'accent secondaire (teal par défaut). */
+let SECONDARY_COLOR = '0d9488'
+
+/** Couleur des liens hypertexte (bleu par défaut, mais devient l'accent). */
+let LINK_COLOR = '2563eb'
+
+/** Fond léger pour la bande d'en-tête (slate-50 par défaut). */
+let HEADER_BG = 'f8fafc'
+
+/** Couleur du texte sur fond d'accent (blanc par défaut). */
+let ACCENT_TEXT_COLOR = 'FFFFFF'
+
+/** Indique si les titres de section ont une bordure inférieure. */
+let SECTION_HAS_BORDER = true
+
+/** Indique si l'en-tête a un fond coloré (avec la couleur d'accent). */
+let COLORED_HEADER = false
 
 /** Couleur de texte principal (gris très foncé). */
 const TEXT_COLOR = '111827'
 
 /** Couleur secondaire / métadonnées (gris moyen). */
 const MUTED_COLOR = '6b7280'
-
-/** Couleur des liens hypertexte (bleu). */
-const LINK_COLOR = '2563eb'
-
-/** Fond léger pour la bande d'en-tête (slate-50). */
-const HEADER_BG = 'f8fafc'
 
 /** Tailles de police en demi-points (1 pt = 2 unités). */
 const SIZE_NAME = 48 // 24 pt — nom complet
@@ -145,17 +163,27 @@ function getLabels(parsedCv: ParsedCv): CvLabels {
 // Helpers de construction
 // =====================================================================
 
-/** Bordure inférieure fine utilisée comme séparateur sous chaque titre de section. */
-const SECTION_BOTTOM_BORDER: IBorderOptions = {
-  style: BorderStyle.SINGLE,
-  color: ACCENT_COLOR,
-  size: 8, // 1 pt
-  space: 4,
+/**
+ * Construit une bordure inférieure fine (effet « divider ») à partir de la
+ * couleur d'accent courante. La bordure est calculée à chaque appel afin de
+ * tenir compte du template sélectionné.
+ */
+function buildSectionBottomBorder(): IBorderOptions {
+  return {
+    style: BorderStyle.SINGLE,
+    color: ACCENT_COLOR,
+    size: 8, // 1 pt
+    space: 4,
+  }
 }
 
 /**
  * Construit un titre de section de niveau 2 avec une bordure inférieure
  * verte (effet « divider ») et la couleur d'accent.
+ *
+ * Si le template désactivé les bordures de section (`SECTION_HAS_BORDER` à
+ * `false`), aucune bordure n'est ajoutée.
+ *
  * @param text - Libellé du titre.
  * @returns Un paragraphe `Heading 2` stylé.
  */
@@ -164,7 +192,7 @@ function sectionHeading(text: string): Paragraph {
     heading: HeadingLevel.HEADING_2,
     spacing: { before: 240, after: 120 },
     keepNext: true,
-    border: { bottom: SECTION_BOTTOM_BORDER },
+    border: SECTION_HAS_BORDER ? { bottom: buildSectionBottomBorder() } : undefined,
     children: [
       new TextRun({
         text,
@@ -220,18 +248,25 @@ function buildHeader(parsedCv: ParsedCv, score: number | undefined, labels: CvLa
   const paragraphs: Paragraph[] = []
   const { personalInfo } = parsedCv
 
+  // Selon le template, l'en-tête est soit sur un fond léger (HEADER_BG),
+  // soit sur un fond coloré (ACCENT_COLOR) — dans ce dernier cas, le texte
+  // doit être clair pour rester lisible.
+  const headerBgFill = COLORED_HEADER ? ACCENT_COLOR : HEADER_BG
+  const headerTextColor = COLORED_HEADER ? ACCENT_TEXT_COLOR : TEXT_COLOR
+  const headerMutedColor = COLORED_HEADER ? ACCENT_TEXT_COLOR : MUTED_COLOR
+
   // Nom complet — grand titre sur bande légèrement teintée
   paragraphs.push(
     new Paragraph({
       alignment: AlignmentType.LEFT,
       spacing: { before: 0, after: 60 },
-      shading: { type: ShadingType.CLEAR, fill: HEADER_BG, color: 'auto' },
+      shading: { type: ShadingType.CLEAR, fill: headerBgFill, color: 'auto' },
       children: [
         new TextRun({
           text: personalInfo.fullName || 'Curriculum Vitae',
           bold: true,
           size: SIZE_NAME,
-          color: TEXT_COLOR,
+          color: headerTextColor,
         }),
       ],
     }),
@@ -247,7 +282,7 @@ function buildHeader(parsedCv: ParsedCv, score: number | undefined, labels: CvLa
             text: personalInfo.title,
             italics: true,
             size: SIZE_TITLE,
-            color: MUTED_COLOR,
+            color: headerMutedColor,
           }),
         ],
       }),
@@ -286,7 +321,7 @@ function buildHeader(parsedCv: ParsedCv, score: number | undefined, labels: CvLa
           new TextRun({
             text: contactParts.join(' | '),
             size: SIZE_SMALL,
-            color: MUTED_COLOR,
+            color: headerMutedColor,
           }),
         ],
       }),
@@ -721,13 +756,28 @@ function buildInterestsSection(parsedCv: ParsedCv, labels: CvLabels): Paragraph[
  *
  * @param params.parsedCv - CV structuré à convertir.
  * @param params.score - Score optionnel (sur 100) affiché en haut du document.
+ * @param params.templateId - Identifiant du template visuel à appliquer (défaut : `modern`).
  * @returns Un `Buffer` Node.js contenant le fichier `.docx` binaire.
  */
 export async function generateWordCv(params: {
   parsedCv: ParsedCv
   score?: number
+  templateId?: CvTemplateId
 }): Promise<Buffer> {
   const { parsedCv, score } = params
+
+  // Résolution du template visuel et application des couleurs/style.
+  // Les variables `let` au niveau du module sont mises à jour ici afin que
+  // toutes les fonctions `build*` utilisent les bonnes valeurs.
+  const template: CvTemplate = getTemplate(params.templateId)
+  ACCENT_COLOR = template.accentColor.toLowerCase()
+  SECONDARY_COLOR = template.secondaryColor.toLowerCase()
+  HEADER_BG = template.headerBg.toLowerCase()
+  LINK_COLOR = template.accentColor.toLowerCase()
+  ACCENT_TEXT_COLOR = template.accentTextColor.toUpperCase()
+  SECTION_HAS_BORDER = template.sectionBorder
+  COLORED_HEADER = template.coloredHeader
+
   const labels = getLabels(parsedCv)
 
   const children: Paragraph[] = [

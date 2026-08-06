@@ -56,9 +56,12 @@ import type { CvTemplateId } from '@/lib/cv/templates'
 import { toast } from 'sonner'
 import { StatsDashboard } from '@/components/cv/stats-dashboard'
 import { SampleSelector } from '@/components/cv/sample-selector'
+import { KeyboardHelp } from '@/components/cv/keyboard-help'
 import { useCvProcessing } from '@/hooks/use-cv-processing'
 import { useCvHistory } from '@/hooks/use-cv-history'
 import { useCvStats } from '@/hooks/use-cv-stats'
+import { useKeyboardShortcuts } from '@/hooks/use-keyboard-shortcuts'
+import { useTheme } from 'next-themes'
 import type { OutputFormat, CvProcessingResult } from '@/lib/cv/types'
 
 const LANGUAGES = [
@@ -104,12 +107,21 @@ export default function Home() {
   const [loadingHistory, setLoadingHistory] = useState(false)
   const [showSamples, setShowSamples] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
+  const [keyboardHelpOpen, setKeyboardHelpOpen] = useState(false)
   const [template, setTemplate] = useState<CvTemplateId>('modern')
 
   const { isProcessing, steps, result, error, processCv, reset } =
     useCvProcessing()
   const { items, loading: historyLoading, refresh, remove } = useCvHistory()
   const { refresh: refreshStats } = useCvStats()
+  const { theme, setTheme } = useTheme()
+
+  // Raccourcis clavier globaux
+  useKeyboardShortcuts({
+    onSearch: () => setSearchOpen(true),
+    onToggleTheme: () => setTheme(theme === 'dark' ? 'light' : 'dark'),
+    onHelp: () => setKeyboardHelpOpen(true),
+  })
 
   // Toast : succès du traitement (quand result passe à 'done')
   useEffect(() => {
@@ -435,6 +447,7 @@ export default function Home() {
                         <SampleSelector
                           onResult={handleSampleResult}
                           outputFormat={outputFormat}
+                          templateId={template}
                           disabled={isProcessing}
                         />
                       </motion.div>
@@ -543,6 +556,7 @@ export default function Home() {
       </main>
 
       <Footer />
+      <KeyboardHelp open={keyboardHelpOpen} onOpenChange={setKeyboardHelpOpen} />
     </div>
   )
 }

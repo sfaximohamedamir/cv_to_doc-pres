@@ -39,13 +39,34 @@ import type {
   Skill,
   Language,
 } from '@/lib/cv/types'
+import { getTemplate, type CvTemplate, type CvTemplateId } from '@/lib/cv/templates'
 
 // =====================================================================
 // Constantes de style
 // =====================================================================
+//
+// Les couleurs d'accent et le fond sombre sont mutables (`let`) car ils
+// sont redéfinis au début de `generatePowerPointCv` en fonction du
+// template visuel demandé. Les couleurs de texte et de fond clair
+// restent fixes car elles ne dépendent pas du template.
 
-/** Couleur d'accent principale (vert émeraude). */
-const ACCENT_COLOR = '10B981'
+/** Couleur d'accent principale (vert émeraude par défaut). */
+let ACCENT_COLOR = '10B981'
+
+/** Couleur d'accent secondaire (teal par défaut). */
+let SECONDARY_COLOR = '0D9488'
+
+/** Couleur claire d'accent pour fonds légers (vert très clair). */
+let ACCENT_LIGHT = 'D1FAE5'
+
+/** Fond sombre (couverture / clôture). */
+let DARK_BG = '1F2937'
+
+/** Indique si les titres de section ont une bordure inférieure. */
+let SECTION_HAS_BORDER = true
+
+/** Indique si la couverture/clôture ont un fond coloré (couleur d'accent). */
+let COLORED_HEADER = false
 
 /** Couleur de texte principal (gris foncé slate). */
 const TEXT_COLOR = '1F2937'
@@ -53,14 +74,8 @@ const TEXT_COLOR = '1F2937'
 /** Couleur secondaire / métadonnées (gris moyen). */
 const MUTED_COLOR = '6B7280'
 
-/** Couleur claire d'accent pour fonds légers (vert très clair). */
-const ACCENT_LIGHT = 'D1FAE5'
-
 /** Fond clair des diapositives de contenu. */
 const LIGHT_BG = 'F9FAFB'
-
-/** Fond sombre (couverture / clôture). */
-const DARK_BG = '1F2937'
 
 /** Texte blanc (sur fond sombre). */
 const WHITE = 'FFFFFF'
@@ -390,14 +405,16 @@ function addSectionTitle(
       valign: 'middle',
     })
   }
-  // Ligne de séparation sous le titre.
-  slide.addShape('line', {
-    x: MARGIN_X,
-    y: MARGIN_Y + 0.85,
-    w: CONTENT_W,
-    h: 0,
-    line: { color: ACCENT_COLOR, width: 1.5 },
-  })
+  // Ligne de séparation sous le titre (uniquement si le template l'autorise).
+  if (SECTION_HAS_BORDER) {
+    slide.addShape('line', {
+      x: MARGIN_X,
+      y: MARGIN_Y + 0.85,
+      w: CONTENT_W,
+      h: 0,
+      line: { color: ACCENT_COLOR, width: 1.5 },
+    })
+  }
 }
 
 /**
@@ -416,6 +433,8 @@ function addCoverSlide(
   score?: number,
 ): void {
   const slide = pptx.addSlide()
+  // DARK_BG est déjà paramétré en fonction du template (couleur d'accent si
+  // l'en-tête est coloré, gris très foncé sinon).
   slide.background = { color: DARK_BG }
 
   // Bande d'accent en haut.
@@ -424,13 +443,16 @@ function addCoverSlide(
     y: 0,
     w: PAGE_W,
     h: 0.18,
-    fill: { color: ACCENT_COLOR },
+    fill: { color: COLORED_HEADER ? WHITE : ACCENT_COLOR },
     line: { type: 'none' },
   })
 
   // Badge score en haut à droite.
   if (typeof score === 'number' && Number.isFinite(score)) {
     const clamped = Math.max(0, Math.min(100, Math.round(score)))
+    // Inversion des couleurs du badge selon le fond pour garantir la lisibilité.
+    const badgeText = COLORED_HEADER ? ACCENT_COLOR : DARK_BG
+    const badgeFill = COLORED_HEADER ? WHITE : ACCENT_COLOR
     slide.addText(`${labels.score} : ${clamped}/100`, {
       x: PAGE_W - 4.5,
       y: 0.45,
@@ -438,10 +460,10 @@ function addCoverSlide(
       h: 0.5,
       fontSize: FONT_SIZE_META,
       bold: true,
-      color: DARK_BG,
+      color: badgeText,
       align: 'right',
       valign: 'middle',
-      fill: { color: ACCENT_COLOR },
+      fill: { color: badgeFill },
       rectRadius: 0.1,
       shape: 'roundRect',
     })
@@ -1157,6 +1179,8 @@ function addThankYouSlide(
   labels: CvLabels,
 ): void {
   const slide = pptx.addSlide()
+  // DARK_BG est déjà paramétré en fonction du template (couleur d'accent si
+  // l'en-tête est coloré, gris très foncé sinon).
   slide.background = { color: DARK_BG }
 
   // Bande d'accent en bas.
@@ -1165,7 +1189,7 @@ function addThankYouSlide(
     y: PAGE_H - 0.18,
     w: PAGE_W,
     h: 0.18,
-    fill: { color: ACCENT_COLOR },
+    fill: { color: COLORED_HEADER ? WHITE : ACCENT_COLOR },
     line: { type: 'none' },
   })
 
@@ -1238,6 +1262,7 @@ function addThankYouSlide(
  * @param params - Paramètres de génération.
  * @param params.parsedCv - CV structuré issu de l'extraction NVIDIA.
  * @param params.score - Score optionnel sur 100 (affiché sur la couverture).
+ * @param params.templateId - Identifiant du template visuel à appliquer (défaut : `modern`).
  * @returns Un `Buffer` Node.js contenant le fichier `.pptx` binaire.
  *
  * @throws {Error} Si la génération échoue ou si le type de sortie renvoyé
@@ -1246,8 +1271,25 @@ function addThankYouSlide(
 export async function generatePowerPointCv(params: {
   parsedCv: ParsedCv
   score?: number
+  templateId?: CvTemplateId
 }): Promise<Buffer> {
   const { parsedCv, score } = params
+
+  // Résolution du template visuel et application des couleurs/style.
+  // Les variables `let` au niveau du module sont mises à jour ici afin que
+  // toutes les fonctions `add*` utilisent les bonnes valeurs. Les couleurs
+  // du template sont en majuscules pour correspondre au format attendu par
+  // `pptxgenjs`.
+  const template: CvTemplate = getTemplate(params.templateId)
+  ACCENT_COLOR = template.accentColor.toUpperCase()
+  SECONDARY_COLOR = template.secondaryColor.toUpperCase()
+  ACCENT_LIGHT = template.accentColor.toUpperCase()
+  // Si le template active l'en-tête coloré, les diapositives de couverture
+  // et de clôture prennent la couleur d'accent comme fond (au lieu du gris
+  // très foncé par défaut) ; DARK_BG est utilisé directement par les slides.
+  DARK_BG = template.coloredHeader ? template.accentColor.toUpperCase() : '1F2937'
+  SECTION_HAS_BORDER = template.sectionBorder
+  COLORED_HEADER = template.coloredHeader
 
   const pptx = new pptxgen()
   // Layout 16:9 large (13,33″ × 7,5″) — équivalent PowerPoint standard.

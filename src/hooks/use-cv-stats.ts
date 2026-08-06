@@ -69,6 +69,18 @@ export interface FormatStatItem {
 }
 
 /**
+ * Élément de la heatmap d'activité (un jour, 24 heures).
+ */
+export interface ActivityHeatmapItem {
+  /** Libellé du jour (Lun, Mar, ...) */
+  day: string
+  /** Index du jour (0=Lun, 6=Dim) */
+  dayIndex: number
+  /** Tableau de 24 valeurs : nombre de CV traités par heure */
+  hours: number[]
+}
+
+/**
  * Forme exacte des statistiques renvoyées par `/api/cv/stats`.
  */
 export interface CvStats {
@@ -102,6 +114,8 @@ export interface CvStats {
   scoreEvolution: ScoreEvolutionItem[]
   /** Statistiques agrégées par format de sortie (Word / PowerPoint) */
   formatStats: FormatStatItem[]
+  /** Heatmap d'activité : 7 jours x 24 heures */
+  activityHeatmap: ActivityHeatmapItem[]
   /** Taux de succès en pourcentage (0-100) */
   successRate: number
 }

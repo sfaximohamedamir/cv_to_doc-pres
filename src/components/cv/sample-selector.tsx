@@ -78,6 +78,8 @@ export interface SampleSelectorProps {
   onResult: (result: CvProcessingResult) => void
   /// Format de sortie demandé (word ou powerpoint).
   outputFormat: OutputFormat
+  /// Template visuel à appliquer (modern, classic, creative, minimal).
+  templateId?: string
   /// Désactive le composant (pendant un autre traitement par exemple).
   disabled?: boolean
 }
@@ -85,6 +87,7 @@ export interface SampleSelectorProps {
 export function SampleSelector({
   onResult,
   outputFormat,
+  templateId,
   disabled,
 }: SampleSelectorProps) {
   // Profil en cours de génération (null si aucun).
@@ -100,7 +103,8 @@ export function SampleSelector({
       const url =
         `/api/cv/sample?generate=true` +
         `&format=${encodeURIComponent(outputFormat)}` +
-        `&type=${encodeURIComponent(type)}`
+        `&type=${encodeURIComponent(type)}` +
+        (templateId ? `&template=${encodeURIComponent(templateId)}` : '')
       const res = await fetch(url, { method: 'GET' })
       const data = await res.json()
       if (!res.ok) {

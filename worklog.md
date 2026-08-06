@@ -890,3 +890,115 @@ Task: QA, évolution des scores, recherche full-text, export CSV, templates CV
 4. **Heatmap d'activité** : activité par heure/jour dans le stats dashboard
 5. **Notifications push** : alerter l'utilisateur quand un long traitement est terminé
 6. **Raccourcis clavier** : Ctrl+K pour la recherche, Ctrl+P pour traiter, etc.
+
+---
+Task ID: 13-a
+Agent: Template Converter Agent
+Task: Câbler les templates visuels dans les convertisseurs Word/PowerPoint
+
+Work Log:
+- Lecture du worklog et des fichiers concernés (`templates.ts`, `word-converter.ts`, `powerpoint-converter.ts`, `process/route.ts`, `sample/route.ts`) pour comprendre la structure et identifier où le `templateId` devait être câblé.
+- Modification de `src/lib/converters/word-converter.ts` :
+  - Import de `getTemplate`, `type CvTemplate`, `type CvTemplateId` depuis `@/lib/cv/templates`.
+  - Conversion des constantes `ACCENT_COLOR`, `SECONDARY_COLOR`, `LINK_COLOR`, `HEADER_BG` en `let` ; ajout de nouvelles variables `let ACCENT_TEXT_COLOR`, `let SECTION_HAS_BORDER`, `let COLORED_HEADER`.
+  - Suppression de la constante `SECTION_BOTTOM_BORDER` (qui était calculée une fois pour toutes à partir du `ACCENT_COLOR` initial) et remplacement par une fonction `buildSectionBottomBorder()` recalculée à chaque appel.
+  - `sectionHeading()` n'ajoute la bordure inférieure que si `SECTION_HAS_BORDER` est vrai.
+  - `buildHeader()` utilise `COLORED_HEADER` pour basculer le fond de l'en-tête de `HEADER_BG` vers `ACCENT_COLOR`, et adapte la couleur du texte (`ACCENT_TEXT_COLOR` blanc) pour garder la lisibilité (nom, titre, ligne de contacts).
+  - `generateWordCv` accepte désormais un paramètre `templateId?: CvTemplateId`, résout le template via `getTemplate()` et met à jour toutes les variables `let` (couleurs en minuscules pour `docx`).
+- Modification de `src/lib/converters/powerpoint-converter.ts` :
+  - Import de `getTemplate`, `type CvTemplate`, `type CvTemplateId`.
+  - Conversion de `ACCENT_COLOR`, `SECONDARY_COLOR`, `ACCENT_LIGHT`, `DARK_BG` en `let` ; ajout de `let SECTION_HAS_BORDER`, `let COLORED_HEADER`.
+  - `addSectionTitle()` n'ajoute la ligne de séparation inférieure que si `SECTION_HAS_BORDER` est vrai.
+  - `addCoverSlide()` et `addThankYouSlide()` utilisent `DARK_BG` (déjà paramétré selon le template) pour le fond, et inversent les couleurs de la bande d'accent et du badge score quand `COLORED_HEADER` est vrai (pour garantir la lisibilité).
+  - `generatePowerPointCv` accepte `templateId?: CvTemplateId`, résout le template, et met à jour les variables `let` (couleurs en MAJUSCULES pour `pptxgenjs`). `DARK_BG` prend la couleur d'accent quand `coloredHeader` est vrai, sinon garde `'1F2937'`.
+- Modification de `src/app/api/cv/process/route.ts` :
+  - Import de `type CvTemplateId` depuis `@/lib/cv/templates`.
+  - Lecture du champ `template` dans le `formData` : `const templateId = (formData.get('template') as string) || undefined`.
+  - Transmission du `templateId` à `generateWordCv` et `generatePowerPointCv`.
+  - Documentation du champ `template` dans la réponse GET d'aide.
+- Modification de `src/app/api/cv/sample/route.ts` :
+  - Import de `type CvTemplateId` depuis `@/lib/cv/templates`.
+  - Lecture du paramètre `template` dans les `searchParams` : `const templateId = (searchParams.get('template') as string) || undefined`.
+  - Transmission du `templateId` aux deux convertisseurs.
+- Vérification TypeScript : `bunx tsc --noEmit -p tsconfig.json 2>&1 | grep -E "word-converter|powerpoint-converter|process|sample"` ne renvoie aucune erreur dans les fichiers modifiés (les erreurs pré-existantes dans `examples/` et `skills/` ne sont pas liées à cette tâche).
+- Vérification ESLint : `bun run lint` passe sans erreur ni warning.
+- Test runtime : génération de CV Word et PowerPoint pour les 4 templates (`modern`, `classic`, `creative`, `minimal`) + cas par défaut (sans `templateId`). Vérification que les couleurs du template sont bien écrites dans les fichiers générés :
+  - Word `.docx` : `modern` → `10b981`/`f0fdf4`, `classic` → `1e3a5f`/`1e3a5f` (en-tête coloré), `creative` → `ea580c`, `minimal` → `1f2937`/`ffffff`.
+  - PowerPoint `.pptx` : `modern` → `10B981`/`1F2937`, `classic` → `1E3A5F` (couverture colorée), `creative` → `EA580C` (couverture colorée), `minimal` → `1F2937`.
+
+Stage Summary:
+- Fichiers modifiés :
+  - `src/lib/converters/word-converter.ts`
+  - `src/lib/converters/powerpoint-converter.ts`
+  - `src/app/api/cv/process/route.ts`
+  - `src/app/api/cv/sample/route.ts`
+- Le template sélectionné dans l'UI est désormais transmis via FormData jusqu'aux convertisseurs, qui l'appliquent (couleur d'accent, couleur secondaire, fond d'en-tête, bordures de section, en-tête coloré). Le comportement par défaut (template `modern`) reste identique lorsque `templateId` est absent.
+
+---
+Task ID: 13 (QA Round 6)
+Agent: Z.ai (review cron)
+Task: Bug fix templates, raccourcis clavier, heatmap, bannière compacte
+
+## État du projet en début de round
+- Projet stable : lint 0 erreur, TSC 0 erreur, serveur tourne sur port 3000
+- 14 routes API, interface très riche (104 fichiers)
+- Bug identifié : les templates visuels étaient sélectionnables dans l'UI mais non câblés aux convertisseurs
+- VLM : bannière NVIDIA trop intrusive
+
+## Objectifs de ce round
+1. Bug fix : câbler les templates aux convertisseurs Word/PowerPoint
+2. Raccourcis clavier (Ctrl+K, Ctrl+B, ?, Ctrl+,) + dialog d'aide
+3. Heatmap d'activité (7 jours x 24 heures)
+4. Bannière NVIDIA compacte et repliable
+5. Passer le template au sample selector
+
+## Modifications réalisées
+
+### Bug fix — Templates câblés (par sous-agent)
+- `src/lib/converters/word-converter.ts` : couleurs `let` au lieu de `const`, `generateWordCv` accepte `templateId?`, `buildSectionBottomBorder()` dynamique, header coloré conditionnel
+- `src/lib/converters/powerpoint-converter.ts` : même approche, couleurs uppercased pour pptxgenjs
+- `src/app/api/cv/process/route.ts` : lit `template` du formData et passe aux convertisseurs
+- `src/app/api/cv/sample/route.ts` : lit `template` du query et passe aux convertisseurs
+- Vérifié : classic template → navy (#1e3a5f) présent, emerald absent ✅
+
+### Nouveaux fichiers (3)
+- `src/hooks/use-keyboard-shortcuts.ts` — hook avec raccourcis Ctrl+K (recherche), Ctrl+B (thème), Ctrl+, (comparateur), ? (aide)
+- `src/components/cv/keyboard-help.tsx` — dialog d'aide avec liste des raccourcis et kbd stylés
+- `src/components/cv/activity-heatmap.tsx` — heatmap 7j x 24h avec 5 niveaux d'intensité emerald, légende, tooltips
+
+### Fichiers modifiés (6)
+- `src/app/api/cv/stats/route.ts` — ajout `activityHeatmap` (7 jours x 24 heures, conversion JS day → Lun-Dim)
+- `src/hooks/use-cv-stats.ts` — ajout interface `ActivityHeatmapItem` + champ `activityHeatmap` à `CvStats`
+- `src/components/cv/stats-dashboard.tsx` — intégration `ActivityHeatmap` (section 3, avant SourceFormatCard)
+- `src/app/page.tsx` — hook `useKeyboardShortcuts`, `useTheme`, état `keyboardHelpOpen`, `KeyboardHelp` render, template passé au `SampleSelector`
+- `src/components/cv/nvidia-status-banner.tsx` — refonte complète : barre compacte 1 ligne + détails repliables (AnimatePresence), moins intrusive
+- `src/components/cv/sample-selector.tsx` — ajout prop `templateId?`, passé au query param de l'API
+
+## Résultats des vérifications
+- **Lint** : 0 erreur ✅
+- **TypeScript** : 0 erreur dans src/ ✅
+- **Serveur dev** : tourne sans erreur ✅
+- **agent-browser** :
+  * Bannière compacte : "nettement moins intrusive, format sur une seule ligne" ✅
+  * Heatmap : "grille 7j x 24h, cellule verte foncé sur jeudi 21h, légende Moins/Plus" ✅
+  * Ctrl+K : ouvre la recherche full-text ✅
+  * ? : ouvre le dialog d'aide raccourcis ✅
+  * Template classic : navy (#1e3a5f) appliqué au docx, emerald absent ✅
+- **VLM** :
+  * Bannière : "moins intrusive, libère l'espace vertical"
+  * Heatmap : "rendu graphique propre et lisible, légende Moins/Plus"
+  * Raccourcis : "liste 5 combinaisons, note compatibilité macOS"
+
+## Risques / points non résolus
+- Les raccourcis clavier ne sont pas découvrables sans le dialog d'aide (?). Un indice visuel (badge "Ctrl+K" sur le bouton Rechercher) améliorerait la découvrabilité.
+- La heatmap n'a des données que si l'utilisateur a traité des CV — sinon affiche l'état vide.
+- Le template "minimal" utilise du noir (#1f2937) qui peut paraître austère — c'est volontaire.
+- 107 fichiers TypeScript dans src/ — la complexité augmente mais la structure reste modulaire.
+
+## Priorités recommandées pour le prochain round
+1. **Indice visuel raccourcis** : ajouter un badge "⌘K" sur le bouton Rechercher pour améliorer la découvrabilité
+2. **Mode avant/après** : re-soumettre un CV modifié et comparer l'évolution du score
+3. **Benchmarks sectoriels** : comparer le score à la moyenne des CV du même métier
+4. **Animations de transition** : ajouter des transitions de page entre configuration et résultats
+5. **Export du rapport en vrai PDF** : utiliser une lib légère (au lieu de window.print)
+6. **Système de tags** : permettre de taguer les CV (entretenu, refusé, embauché) pour filtrage

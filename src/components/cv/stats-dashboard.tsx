@@ -46,6 +46,7 @@ import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { useCvStats, type CvStats } from '@/hooks/use-cv-stats'
 import { ScoreEvolutionChart } from '@/components/cv/score-evolution-chart'
+import { ActivityHeatmap } from '@/components/cv/activity-heatmap'
 
 /* -------------------------------------------------------------------------- */
 /*                              Sous-composants                               */
@@ -539,7 +540,10 @@ export function StatsDashboard() {
             <Activity7DaysCard last7Days={stats.last7Days} delay={0.45} />
           </div>
 
-          {/* Section 3 : répartition des formats source */}
+          {/* Section 3 : heatmap d'activité */}
+          <ActivityHeatmap data={stats.activityHeatmap} delay={0.5} />
+
+          {/* Section 4 : répartition des formats source */}
           <SourceFormatCard
             pdfCount={stats.pdfCount}
             imageCount={stats.imageCount}
