@@ -66,9 +66,14 @@ model CvRecord {
   scoringModel  String?
   /// Durée du traitement en millisecondes
   durationMs    Int?
+  /// Tag de statut de recrutement (none | review | interview | offered | hired | rejected)
+  tag           String   @default("none")
+  /// Notes libres associées au CV par le recruteur
+  notes         String?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
   @@index([status])
   @@index([createdAt])
+  @@index([tag])
 }

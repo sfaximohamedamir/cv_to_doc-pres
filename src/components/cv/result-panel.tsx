@@ -28,6 +28,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Badge } from '@/components/ui/badge'
 import { ScoreDisplay } from '@/components/cv/score-display'
 import { CvPreview } from '@/components/cv/cv-preview'
+import { TagSelector } from '@/components/cv/tag-selector'
 import type { CvProcessingResult } from '@/lib/cv/types'
 
 export interface ResultPanelProps {
@@ -35,10 +36,13 @@ export interface ResultPanelProps {
   onReset: () => void
   /// Optionnel : permet de relancer le traitement sur le CV courant.
   onReprocess?: () => void
+  /// Optionnel : callback appelé après un changement de tag (pour rafraîchir l'historique)
+  onTagChanged?: () => void
 }
 
-export function ResultPanel({ result, onReset, onReprocess }: ResultPanelProps) {
+export function ResultPanel({ result, onReset, onReprocess, onTagChanged }: ResultPanelProps) {
   const [activeTab, setActiveTab] = useState('score')
+  const [currentTag, setCurrentTag] = useState(result.tag || 'none')
 
   const isWord = result.outputFormat === 'word'
   const isSample = result.extractionModel?.toLowerCase().includes('sample')
@@ -95,6 +99,18 @@ export function ResultPanel({ result, onReset, onReprocess }: ResultPanelProps) 
                     Scoring : {result.scoringModel.split('/').pop()}
                   </span>
                 )}
+              </div>
+              {/* Tag selector */}
+              <div className="mt-3 flex items-center gap-2">
+                <span className="text-xs font-medium text-muted-foreground">Statut :</span>
+                <TagSelector
+                  cvId={result.id}
+                  tag={currentTag}
+                  onTagChanged={(newTag) => {
+                    setCurrentTag(newTag)
+                    onTagChanged?.()
+                  }}
+                />
               </div>
             </div>
           </div>

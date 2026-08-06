@@ -211,6 +211,8 @@ export default function Home() {
         durationMs: data.durationMs || undefined,
         extractionModel: data.extractionModel || '',
         scoringModel: data.scoringModel || '',
+        tag: data.tag || 'none',
+        notes: data.notes || null,
       })
     } catch {
       setViewedHistory(null)
@@ -500,6 +502,10 @@ export default function Home() {
                 result={displayedResult}
                 onReset={handleReset}
                 onReprocess={handleReprocess}
+                onTagChanged={() => {
+                  refresh()
+                  refreshStats()
+                }}
               />
             )}
 
@@ -522,9 +528,13 @@ export default function Home() {
                 onClick={() => setSearchOpen(true)}
                 disabled={items.length === 0}
                 className="gap-1.5"
+                title="Rechercher (Ctrl+K)"
               >
                 <Search className="h-3.5 w-3.5" />
                 <span className="hidden sm:inline">Rechercher</span>
+                <kbd className="ml-1 hidden rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-[10px] font-medium text-muted-foreground sm:inline">
+                  ⌘K
+                </kbd>
               </Button>
               <div className="flex gap-2">
                 {items.length > 0 && (

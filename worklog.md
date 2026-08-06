@@ -1002,3 +1002,70 @@ Task: Bug fix templates, raccourcis clavier, heatmap, bannière compacte
 4. **Animations de transition** : ajouter des transitions de page entre configuration et résultats
 5. **Export du rapport en vrai PDF** : utiliser une lib légère (au lieu de window.print)
 6. **Système de tags** : permettre de taguer les CV (entretenu, refusé, embauché) pour filtrage
+
+---
+Task ID: 14 (QA Round 7)
+Agent: Z.ai (review cron)
+Task: Système de tags de recrutement, indice ⌘K, fix Prisma Client
+
+## État du projet en début de round
+- Projet stable : lint 0 erreur, TSC 0 erreur, serveur tourne sur port 3000
+- 107 fichiers TypeScript, 15 routes API
+- VLM : bannière moins intrusive, heatmap propre, raccourcis clavier clairs
+- Priorités : système de tags, indice visuel raccourcis, transitions
+
+## Objectifs de ce round
+1. Système de tags de recrutement (none/review/interview/offered/hired/rejected) avec filtrage
+2. Indice visuel ⌘K sur le bouton Rechercher
+3. Notes libres associées aux CV
+4. Rafraîchissement automatique de l'historique après changement de tag
+
+## Modifications réalisées
+
+### Schéma de base de données
+- `prisma/schema.prisma` : ajout champs `tag` (String, default "none") et `notes` (String?) au modèle CvRecord + index sur tag
+- `bun run db:push` + `bun run db:generate` pour synchroniser
+
+### Nouvelle route API (1)
+- `PATCH /api/cv/tag` — met à jour le tag et/ou les notes d'un CV (validation des valeurs, retour de l'enregistrement mis à jour)
+
+### Nouveaux fichiers (2)
+- `src/lib/cv/tags.ts` — définition des 6 tags (none, review, interview, offered, hired, rejected) avec labels, couleurs, emojis, classes Tailwind
+- `src/components/cv/tag-selector.tsx` — sélecteur de tag compact (Select avec points colorés, toast de confirmation, loading state)
+
+### Fichiers modifiés (7)
+- `src/lib/cv/types.ts` — ajout champs `tag?` et `notes?` à `CvProcessingResult`
+- `src/app/api/cv/history/route.ts` — ajout `tag` et `notes` au select
+- `src/app/api/cv/history/[id]/route.ts` — ajout `tag` et `notes` à la réponse
+- `src/hooks/use-cv-history.ts` — ajout champs `tag` et `notes` à `HistoryItem`
+- `src/components/cv/result-panel.tsx` — intégration `TagSelector` avec état local `currentTag` + callback `onTagChanged?`
+- `src/components/cv/history-list.tsx` — affichage du badge tag sur chaque item + filtre par tag (4e dropdown) + resetFilters étendu
+- `src/app/page.tsx` — passage de `onTagChanged` au ResultPanel (refresh history + stats) + badge ⌘K sur le bouton Rechercher + passage de tag/notes au viewedHistory
+
+## Bug fix
+- **Prisma Client non régénéré** : après `db:push`, le serveur dev utilisait encore l'ancien Prisma Client (erreur "Unknown field `tag`"). Fix : `touch next.config.ts` pour forcer un redémarrage complet du serveur de développement.
+
+## Résultats des vérifications
+- **Lint** : 0 erreur ✅
+- **TypeScript** : 0 erreur dans src/ ✅
+- **Serveur dev** : tourne sans erreur, Prisma queries incluent tag et notes ✅
+- **agent-browser** :
+  * Badge ⌘K visible sur le bouton Rechercher ✅
+  * Tag selector dans le panneau de résultats : 6 options (⚪🔵🟡🟣🟢🔴) ✅
+  * Changement de tag : "Embauché" sélectionné → API PATCH 200 → DB mise à jour ✅
+  * Filtre par tag dans l'historique : dropdown "Tous les tags" avec 6 options ✅
+  * Badge tag affiché à côté du score dans l'historique ✅
+- **VLM** : "sélecteur de statut indique clairement Embauché, pastille verte"
+
+## Risques / points non résolus
+- Le filtre par tag nécessite un rafraîchissement de l'historique pour voir les tags à jour (corrigé via `onTagChanged` → `refresh()`)
+- Les notes libres ne sont pas encore éditables depuis l'UI (le champ `notes` existe en DB et dans l'API, mais pas d'éditeur de texte dans l'interface)
+- 110 fichiers TypeScript dans src/ — la complexité augmente mais la structure reste modulaire
+
+## Priorités recommandées pour le prochain round
+1. **Éditeur de notes** : ajouter un Textarea dans le panneau de résultats pour éditer les notes libres du recruteur
+2. **Statistiques par tag** : ajouter un graphique de répartition des tags dans le stats dashboard
+3. **Mode avant/après** : re-soumettre un CV modifié et comparer l'évolution du score
+4. **Benchmarks sectoriels** : comparer le score à la moyenne des CV du même métier
+5. **Export filtré** : exporter en CSV seulement les CV correspondant aux filtres actifs
+6. **Raccourcis supplémentaires** : Ctrl+1/2/3 pour basculer entre les templates

@@ -56,6 +56,8 @@ export async function GET(
     scoringModel: record.scoringModel,
     durationMs: record.durationMs,
     fileSize: record.fileSize,
+    tag: record.tag,
+    notes: record.notes,
     downloadUrl: record.filePath
       ? `/api/download?file=${encodeURIComponent(record.filePath)}`
       : null,

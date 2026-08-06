@@ -180,4 +180,8 @@ export interface CvProcessingResult {
   errorMessage?: string;
   extractionModel: string;
   scoringModel: string;
+  /** Tag de statut de recrutement (none | review | interview | offered | hired | rejected) */
+  tag?: string;
+  /** Notes libres du recruteur */
+  notes?: string | null;
 }

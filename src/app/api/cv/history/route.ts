@@ -45,6 +45,8 @@ export async function GET(request: NextRequest) {
       fileSize: true,
       errorMessage: true,
       filePath: true,
+      tag: true,
+      notes: true,
       createdAt: true,
       updatedAt: true,
     },

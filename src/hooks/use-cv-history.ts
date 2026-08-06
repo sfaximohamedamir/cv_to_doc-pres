@@ -20,6 +20,8 @@ export interface HistoryItem {
   durationMs: number | null
   fileSize: number
   errorMessage: string | null
+  tag: string
+  notes: string | null
   downloadUrl: string | null
   createdAt: string
 }

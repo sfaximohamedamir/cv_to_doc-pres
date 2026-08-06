@@ -38,6 +38,7 @@ import {
 } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 import type { HistoryItem } from '@/hooks/use-cv-history'
+import { getTag, CV_TAGS, type CvTagId } from '@/lib/cv/tags'
 
 export interface HistoryListProps {
   items: HistoryItem[]
@@ -72,6 +73,7 @@ function getScoreColor(score: number): string {
 
 type FormatFilter = 'all' | 'word' | 'powerpoint'
 type ScoreFilter = 'all' | 'excellent' | 'verygood' | 'correct' | 'poor'
+type TagFilter = 'all' | 'none' | 'review' | 'interview' | 'offered' | 'hired' | 'rejected'
 type SortBy = 'recent' | 'oldest' | 'best' | 'worst'
 
 export function HistoryList({
@@ -86,6 +88,7 @@ export function HistoryList({
   const [searchQuery, setSearchQuery] = useState('')
   const [formatFilter, setFormatFilter] = useState<FormatFilter>('all')
   const [scoreFilter, setScoreFilter] = useState<ScoreFilter>('all')
+  const [tagFilter, setTagFilter] = useState<TagFilter>('all')
   const [sortBy, setSortBy] = useState<SortBy>('recent')
 
   // Calcul mémoïsé de la liste filtrée et triée
@@ -124,6 +127,11 @@ export function HistoryList({
       })
     }
 
+    // 3.5. Filtrage par tag
+    if (tagFilter !== 'all') {
+      result = result.filter((item) => (item.tag || 'none') === tagFilter)
+    }
+
     // 4. Tri
     const sorted = [...result]
     sorted.sort((a, b) => {
@@ -152,19 +160,21 @@ export function HistoryList({
     })
 
     return sorted
-  }, [items, searchQuery, formatFilter, scoreFilter, sortBy])
+  }, [items, searchQuery, formatFilter, scoreFilter, tagFilter, sortBy])
 
   // Indique si au moins un filtre est actif
   const filtersActive =
     searchQuery.trim() !== '' ||
     formatFilter !== 'all' ||
     scoreFilter !== 'all' ||
+    tagFilter !== 'all' ||
     sortBy !== 'recent'
 
   const resetFilters = () => {
     setSearchQuery('')
     setFormatFilter('all')
     setScoreFilter('all')
+    setTagFilter('all')
     setSortBy('recent')
   }
 
@@ -259,6 +269,23 @@ export function HistoryList({
                 <SelectItem value="verygood">Très bon (70+)</SelectItem>
                 <SelectItem value="correct">Correct (55+)</SelectItem>
                 <SelectItem value="poor">À améliorer (&lt;55)</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <Select
+              value={tagFilter}
+              onValueChange={(v) => setTagFilter(v as TagFilter)}
+            >
+              <SelectTrigger size="sm" className="h-8 flex-1 text-xs">
+                <SelectValue placeholder="Tag" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Tous les tags</SelectItem>
+                {CV_TAGS.map((t) => (
+                  <SelectItem key={t.id} value={t.id}>
+                    {t.emoji} {t.label}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
 
@@ -386,6 +413,14 @@ export function HistoryList({
                             >
                               <Star className="h-3 w-3 fill-current" />
                               {item.score}/100
+                              {item.tag && item.tag !== 'none' && (
+                                <span className="ml-1 inline-flex items-center gap-0.5">
+                                  <span className={cn('h-1.5 w-1.5 rounded-full', getTag(item.tag as CvTagId).dotClass)} />
+                                  <span className="text-[10px] font-normal text-muted-foreground">
+                                    {getTag(item.tag as CvTagId).label}
+                                  </span>
+                                </span>
+                              )}
                             </p>
                           ) : null}
                         </div>
