@@ -9,6 +9,7 @@ import { useEffect, useState } from 'react'
 import { FileText, Cpu, CheckCircle2, AlertCircle, RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { ThemeToggle } from '@/components/theme-toggle'
 
 interface StatusInfo {
   nvidiaConfigured: boolean
@@ -95,6 +96,7 @@ export function Header() {
           >
             <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
           </Button>
+          <ThemeToggle />
         </div>
       </div>
     </header>

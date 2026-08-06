@@ -4,11 +4,12 @@
  * Page principale de l'agent de transformation de CV.
  *
  * Architecture :
- *  - Header (sticky)
+ *  - Header (sticky) avec toggle de thème
  *  - Bannière de configuration NVIDIA
- *  - Section hero (présentation)
+ *  - Section hero (présentation + pipeline)
+ *  - Tableau de bord de statistiques (si des CV ont été traités)
  *  - Zone principale en 2 colonnes :
- *      * Colonne gauche : upload, format, bouton, étapes, résultats
+ *      * Colonne gauche : upload, sample selector, format, bouton, étapes, résultats
  *      * Colonne droite : historique
  *  - Footer (sticky en bas)
  */
@@ -24,6 +25,7 @@ import {
   FileOutput,
   Gauge,
   Languages,
+  Lightbulb,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -43,8 +45,11 @@ import { FormatSelector } from '@/components/cv/format-selector'
 import { ProcessingSteps } from '@/components/cv/processing-steps'
 import { ResultPanel } from '@/components/cv/result-panel'
 import { HistoryList } from '@/components/cv/history-list'
+import { StatsDashboard } from '@/components/cv/stats-dashboard'
+import { SampleSelector } from '@/components/cv/sample-selector'
 import { useCvProcessing } from '@/hooks/use-cv-processing'
 import { useCvHistory } from '@/hooks/use-cv-history'
+import { useCvStats } from '@/hooks/use-cv-stats'
 import type { OutputFormat, CvProcessingResult } from '@/lib/cv/types'
 
 const LANGUAGES = [
@@ -88,24 +93,50 @@ export default function Home() {
   const [selectedHistoryId, setSelectedHistoryId] = useState<string | null>(null)
   const [viewedHistory, setViewedHistory] = useState<CvProcessingResult | null>(null)
   const [loadingHistory, setLoadingHistory] = useState(false)
+  const [showSamples, setShowSamples] = useState(false)
 
   const { isProcessing, steps, result, error, processCv, reset } =
     useCvProcessing()
   const { items, loading: historyLoading, refresh, remove } = useCvHistory()
+  const { refresh: refreshStats } = useCvStats()
 
   const handleProcess = useCallback(async () => {
     if (!file) return
     const lang = language === 'auto' ? undefined : language
     await processCv({ file, outputFormat, language: lang })
-    // Rafraîchir l'historique après le traitement
+    // Rafraîchir l'historique et les stats après le traitement
     refresh()
-  }, [file, outputFormat, language, processCv, refresh])
+    refreshStats()
+  }, [file, outputFormat, language, processCv, refresh, refreshStats])
 
   const handleReset = useCallback(() => {
     reset()
     setFile(null)
     setViewedHistory(null)
     setSelectedHistoryId(null)
+  }, [reset])
+
+  const handleSampleResult = useCallback(
+    (sampleResult: CvProcessingResult) => {
+      reset()
+      setViewedHistory(sampleResult)
+      setSelectedHistoryId(null)
+      // Rafraîchir l'historique et les stats
+      refresh()
+      refreshStats()
+    },
+    [reset, refresh, refreshStats]
+  )
+
+  const handleReprocess = useCallback(() => {
+    // Retraiter : revenir à l'écran de configuration en gardant le format
+    reset()
+    setViewedHistory(null)
+    setSelectedHistoryId(null)
+    // Faire défiler vers le haut
+    if (typeof window !== 'undefined') {
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+    }
   }, [reset])
 
   const handleSelectHistory = useCallback(async (id: string) => {
@@ -116,7 +147,6 @@ export default function Home() {
       const res = await fetch(`/api/cv/history/${id}`)
       if (!res.ok) throw new Error(`Erreur ${res.status}`)
       const data = await res.json()
-      // Construire un objet CvProcessingResult à partir des données d'historique
       setViewedHistory({
         id: data.id,
         status: data.status,
@@ -140,12 +170,13 @@ export default function Home() {
   const handleRemove = useCallback(
     async (id: string) => {
       await remove(id)
+      refreshStats()
       if (selectedHistoryId === id) {
         setSelectedHistoryId(null)
         setViewedHistory(null)
       }
     },
-    [remove, selectedHistoryId]
+    [remove, refreshStats, selectedHistoryId]
   )
 
   // Le résultat affiché : soit le traitement courant, soit un élément d'historique consulté
@@ -218,6 +249,9 @@ export default function Home() {
             </div>
           </motion.section>
         )}
+
+        {/* Tableau de bord de statistiques */}
+        {!showResult && !isProcessing && <StatsDashboard />}
 
         {/* Contenu principal : 2 colonnes */}
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_360px]">
@@ -301,6 +335,41 @@ export default function Home() {
                       </>
                     )}
                   </Button>
+
+                  {/* Lien pour tester avec un CV d'exemple */}
+                  <div className="relative">
+                    <div className="absolute inset-0 flex items-center" aria-hidden="true">
+                      <div className="w-full border-t border-border" />
+                    </div>
+                    <div className="relative flex justify-center">
+                      <button
+                        type="button"
+                        onClick={() => setShowSamples((s) => !s)}
+                        className="flex items-center gap-1.5 bg-background px-3 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+                      >
+                        <Lightbulb className="h-3.5 w-3.5" />
+                        {showSamples ? 'Masquer' : "Pas de CV sous la main ? Testez avec un exemple"}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Sample selector (conditionnel) */}
+                  <AnimatePresence>
+                    {showSamples && (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: 'auto' }}
+                        exit={{ opacity: 0, height: 0 }}
+                        className="overflow-hidden"
+                      >
+                        <SampleSelector
+                          onResult={handleSampleResult}
+                          outputFormat={outputFormat}
+                          disabled={isProcessing}
+                        />
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </CardContent>
               </Card>
             )}
@@ -344,7 +413,11 @@ export default function Home() {
 
             {/* Résultat */}
             {showResult && displayedResult && (
-              <ResultPanel result={displayedResult} onReset={handleReset} />
+              <ResultPanel
+                result={displayedResult}
+                onReset={handleReset}
+                onReprocess={handleReprocess}
+              />
             )}
 
             {/* Chargement d'un élément d'historique */}

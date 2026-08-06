@@ -151,7 +151,7 @@ export function UploadZone({ file, onFileSelected, disabled }: UploadZoneProps) 
           }
         }}
         className={cn(
-          'relative flex cursor-pointer flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed p-10 text-center transition-all',
+          'relative flex cursor-pointer flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed p-6 text-center transition-all sm:p-10',
           isDragging
             ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-950/30'
             : 'border-border bg-muted/30 hover:border-emerald-400 hover:bg-muted/50',
@@ -160,9 +160,9 @@ export function UploadZone({ file, onFileSelected, disabled }: UploadZoneProps) 
       >
         <motion.div
           animate={isDragging ? { y: -4, scale: 1.1 } : { y: 0, scale: 1 }}
-          className="flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-emerald-500 to-teal-600 text-white shadow-lg shadow-emerald-500/20"
+          className="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-emerald-500 to-teal-600 text-white shadow-lg shadow-emerald-500/20 sm:h-16 sm:w-16"
         >
-          <UploadCloud className="h-8 w-8" />
+          <UploadCloud className="h-6 w-6 sm:h-8 sm:w-8" />
         </motion.div>
         <div>
           <p className="font-medium text-foreground">

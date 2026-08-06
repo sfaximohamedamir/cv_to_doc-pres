@@ -339,3 +339,168 @@ Stage Summary:
 - L'agent est prêt à l'emploi : il suffit d'ajouter NVIDIA_API_KEY dans .env.local
 - Documentation complète : README.md (750 lignes) + docs/HOWTO.md (1647 lignes)
 - 84 fichiers TypeScript dans src/
+
+---
+Task ID: 9-a
+Agent: Stats Dashboard Agent
+Task: Créer le tableau de bord de statistiques (hook + composant)
+
+Work Log:
+- Lecture du worklog.md pour comprendre le contexte projet (Next.js 16, Tailwind 4, shadcn/ui, Framer Motion, palette emerald/teal/cyan, hooks pattern).
+- Lecture des fichiers de référence pour la cohérence stylistique :
+  * `src/hooks/use-cv-history.ts` — pattern du hook (useState/useEffect/useCallback, fetch + gestion d'erreur).
+  * `src/app/api/cv/stats/route.ts` — forme exacte du JSON renvoyé (14 champs, scoreDistribution à 5 paliers, last7Days à 7 jours).
+  * `src/components/cv/score-display.tsx` et `src/components/cv/history-list.tsx` — conventions UI (Cartes, motion.div, icônes Lucide, palette emerald/teal/amber/orange/red selon le score).
+  * `src/components/ui/card.tsx`, `badge.tsx`, `button.tsx` — API des composants shadcn.
+- Création de `/home/z/my-project/src/hooks/use-cv-stats.ts` :
+  * Directive `'use client'`.
+  * Interfaces exportées : `CvStats`, `ScoreDistributionItem`, `Last7DaysItem`, `UseCvStatsReturn`.
+  * Hook `useCvStats()` qui fetch `/api/cv/stats` au montage, expose `{ stats, loading, error, refresh }`.
+  * Pattern identique à `useCvHistory` (useCallback + useEffect pour le refresh initial).
+  * JSDoc français complet sur chaque interface et fonction.
+- Création de `/home/z/my-project/src/components/cv/stats-dashboard.tsx` :
+  * Directive `'use client'`.
+  * Importe `useCvStats` et `CvStats` depuis le hook.
+  * Retourne `null` si `stats` est `null` ou `stats.total === 0` (le dashboard est optionnel).
+  * En-tête « Statistiques » avec icône BarChart3, badge « {total} CV » et bouton « Rafraîchir » (icône RefreshCw qui devient Loader2 animé pendant le chargement).
+  * Section 1 — 4 cartes KPI en grille responsive (`grid-cols-2 md:grid-cols-4`) :
+    - Carte 1 : Total CVs (FileText, gradient emerald) — `{stats.total}` + sous-titre « {done} réussis · {errors} erreurs ».
+    - Carte 2 : Score moyen (TrendingUp, gradient teal) — `{averageScore}/100` + sous-titre « Meilleur: {bestScore} · Pire: {worstScore} ».
+    - Carte 3 : Taux de succès (CheckCircle2, gradient cyan) — `{successRate}%` + sous-titre « Durée moy: {(averageDuration/1000).toFixed(1)}s ».
+    - Carte 4 : Documents générés (FileOutput, gradient orange) — `{wordCount + pptxCount}` + sous-titre « {wordCount} Word · {pptxCount} PowerPoint ».
+    - Chaque carte : `motion.div` avec `initial={{opacity:0, y:10}} animate={{opacity:1, y:0}}` et délais staggered (0.05, 0.13, 0.21, 0.29), `whileHover={{scale:1.02}}` + shadow emerald au hover.
+  * Section 2 — 2 colonnes (`grid-cols-1 md:grid-cols-2`) :
+    - Gauche : « Répartition des scores » (BarChart3) — barres horizontales animées, couleur depuis `d.color`, largeur proportionnelle à `count/maxCount`, libellé à gauche, compte à droite. État vide si total = 0.
+    - Droite : « Activité (7 derniers jours) » (CalendarDays) — barres verticales avec gradient emerald→teal, hauteur proportionnelle à `count/maxCount`, labels Lun/Mar/... sous chaque barre, compte en bas. Le jour courant est mis en évidence (gradient teal→emerald différent). État vide si tous les comptes = 0.
+  * Section 3 — Carte « Sources des CV » (BarChart2) :
+    - Ligne PDF (FileType2, rouge) avec barre animée + pourcentage.
+    - Ligne Images (FileImage, teal) avec barre animée + pourcentage.
+    - Deux badges récapitulatifs (PDF + images) avec couleurs cohérentes.
+  * Palette 100% emerald/teal/cyan + orange pour la carte « Documents générés » (aucune utilisation de indigo/blue).
+  * Toutes les animations avec Framer Motion (staggered delays, fade+slide, largeurs/hauteurs animées).
+  * JSDoc français complet en en-tête de fichier et sur chaque sous-composant.
+- Vérification TypeScript : `bunx tsc --noEmit -p tsconfig.json 2>&1 | grep -E "stats-dashboard|use-cv-stats"` → 0 erreur sur les fichiers créés (les seules erreurs restantes sont dans `examples/` et `skills/`, préexistantes et hors scope).
+- Vérification ESLint : `bun run lint` → 0 erreur sur tout le projet. `bunx eslint src/components/cv/stats-dashboard.tsx src/hooks/use-cv-stats.ts` → 0 erreur.
+
+Stage Summary:
+- 2 fichiers créés :
+  * `/home/z/my-project/src/hooks/use-cv-stats.ts` (~110 lignes) — hook React typé avec interfaces `CvStats`, `UseCvStatsReturn`, pattern identique à `useCvHistory`.
+  * `/home/z/my-project/src/components/cv/stats-dashboard.tsx` (~390 lignes) — composant `StatsDashboard` (export nommé + default) avec 4 sous-composants privés (`KpiCard`, `ScoreDistributionCard`, `Activity7DaysCard`, `SourceFormatCard`).
+- Exports disponibles pour intégration :
+  * `import { StatsDashboard } from '@/components/cv/stats-dashboard'`
+  * `import { useCvStats, type CvStats } from '@/hooks/use-cv-stats'`
+- Décisions clés :
+  * Le composant retourne `null` si pas de données ou `total === 0` (pas d'état de chargement visible — le dashboard est optionnel et ne doit pas bloquer l'UI).
+  * Pas d'intégration dans `page.tsx` ici : la task demandait uniquement la création du hook + composant. L'intégration entre le hero et la grille 2 colonnes se fera dans une task séparée.
+  * Palette emerald/teal/cyan (+ orange pour la 4e carte KPI) — aucune utilisation de indigo/blue, cohérent avec le reste de l'app.
+  * Animations staggered : KPI (0.05→0.29s), graphiques (0.4→0.45s), sources (0.5s).
+  * Gestion des états vides : ScoreDistributionCard affiche un placeholder si `totalScores === 0`, Activity7DaysCard affiche un placeholder si `totalCount === 0`, SourceFormatCard affiche des pourcentages à 0% gracieusement si `total === 0`.
+- 0 erreur TypeScript sur les nouveaux fichiers, 0 erreur ESLint sur tout le projet.
+
+---
+Task ID: 9-b
+Agent: Sample Selector & Result Panel Agent
+Task: Créer le sélecteur de CV d'exemple + enrichir le panneau de résultats
+
+Work Log:
+- Lecture des fichiers de contexte : `src/lib/cv/types.ts` (type `CvProcessingResult`), `src/components/cv/result-panel.tsx` (structure existante), `src/hooks/use-cv-processing.ts`, `src/app/api/cv/sample/route.ts` et `src/app/api/cv/export/route.ts` pour comprendre les contrats.
+- Création de `src/components/cv/sample-selector.tsx` :
+  - Composant `'use client'` avec 3 cartes de profils : "Profil confirmé" (`full`, icône `Briefcase`), "Profil junior" (`junior`, icône `GraduationCap`), "Profil senior" (`senior`, icône `Award`).
+  - Chaque carte affiche : icône, nom, description courte, badge "Score ~ <plage>".
+  - En-tête d'information avec icône `Info` et le texte "Pas de clé NVIDIA ? Testez avec un CV d'exemple".
+  - Au clic : `fetch GET /api/cv/sample?generate=true&format=${outputFormat}&type=${type}` puis appel `onResult(data)`.
+  - États : `loadingId` par profil (spinner `Loader2` + libellé "Génération du CV d'exemple..."), bloc d'erreur, indicateur de chargement global.
+  - Palette emerald/teal partout, animations framer-motion (scale hover/tap).
+  - Props : `onResult: (result: CvProcessingResult) => void`, `outputFormat: OutputFormat`, `disabled?: boolean`.
+- Modification de `src/components/cv/result-panel.tsx` (éditions ciblées, pas de rewrite) :
+  - Ajout des imports `FileJson` et `RefreshCw` depuis `lucide-react`.
+  - Ajout de la prop optionnelle `onReprocess?: () => void` à `ResultPanelProps`.
+  - Calcul de `isSample = result.extractionModel?.toLowerCase().includes('sample')` et `exportJsonUrl = /api/cv/export?id=<result.id>`.
+  - Ajout d'un badge "CV d'exemple" (outline, palette emerald) dans le bandeau de succès quand `isSample` est vrai.
+  - Ajout d'un bouton "Exporter JSON" (`Button asChild` + `<a href=exportJsonUrl download>` + icône `FileJson`, variant `outline`).
+  - Ajout d'un bouton "Retraiter" (icône `RefreshCw`, variant `outline`, `onClick={onReprocess}`, rendu uniquement si `onReprocess` est fourni).
+  - Boutons placés entre "Télécharger" et "Nouveau CV" pour cohérence visuelle.
+- Vérifications :
+  - `bunx tsc --noEmit -p tsconfig.json` : 0 erreur sur `sample-selector.tsx` et `result-panel.tsx` (erreurs résiduelles uniquement dans `examples/` et `skills/`, hors périmètre).
+  - `bun run lint` : 0 erreur, 0 warning.
+  - `bunx eslint src/components/cv/sample-selector.tsx src/components/cv/result-panel.tsx` : clean.
+
+Stage Summary:
+- Fichier créé : `src/components/cv/sample-selector.tsx` — composant `SampleSelector` (export nommé) permettant de tester l'app sans clé NVIDIA via 3 profils d'exemple.
+- Fichier modifié : `src/components/cv/result-panel.tsx` — enrichi avec boutons "Exporter JSON" et "Retraiter" + badge "CV d'exemple".
+- Décisions clés :
+  * `onReprocess` resté optionnel (rendu conditionnel) pour ne pas casser les consommateurs existants de `ResultPanel`.
+  * Le bouton "Exporter JSON" utilise `Button asChild` avec une ancre `<a download>` pour déclencher le téléchargement direct côté navigateur (pas de fetch manuel).
+  * Détection du mode "sample" via `extractionModel` (la route API met `'sample (no AI)'`) — robuste car insensible à la casse.
+  * Le `downloadUrl` du bouton principal "Télécharger" reste wrappé dans `{result.downloadUrl && (...)}` (inchangé) ; les nouveaux boutons sont rendus inconditionnellement puisque l'export JSON ne dépend que de `result.id`.
+- Palette emerald/teal partout, aucune couleur indigo/blue, conformément aux conventions du projet.
+
+---
+Task ID: 9 (QA Round 2)
+Agent: Z.ai (review cron)
+Task: QA, améliorations styling et nouvelles fonctionnalités
+
+## État du projet en début de round
+- Projet stable : lint 0 erreur, TSC 0 erreur, serveur tourne sur port 3000
+- 8 routes API fonctionnelles
+- Interface complète mais sans dark mode, sans stats, sans export JSON, sans CV d'exemple
+- VLM avait identifié : alignement colonnes, empty state historique vaste, pas de dark mode, pas de feedback enrichi
+
+## Objectifs de ce round
+1. Ajouter le dark mode (next-themes déjà installé)
+2. Créer un tableau de bord de statistiques
+3. Ajouter l'export JSON du CV structuré
+4. Créer des CV d'exemple pour tester sans clé NVIDIA
+5. Améliorer le styling (mobile, KPI compacts, upload zone)
+
+## Modifications réalisées
+
+### Nouvelles routes API (3)
+- `GET /api/cv/stats` — statistiques agrégées (total, score moyen, distribution, activité 7 jours, taux de succès)
+- `GET /api/cv/sample?generate=true&format=word|powerpoint&type=full|junior|senior` — génère un CV d'exemple SANS clé NVIDIA
+- `GET /api/cv/export?id=<cvId>` — exporte les données structurées d'un CV en JSON
+
+### Nouveaux fichiers (8)
+- `src/lib/cv/samples.ts` — 3 profils CV réalistes (full/junior/senior) avec scores de démo
+- `src/app/api/cv/stats/route.ts` — endpoint statistiques
+- `src/app/api/cv/sample/route.ts` — endpoint CV d'exemple
+- `src/app/api/cv/export/route.ts` — endpoint export JSON
+- `src/components/theme-provider.tsx` — provider next-themes
+- `src/components/theme-toggle.tsx` — bouton de bascule clair/sombre
+- `src/hooks/use-cv-stats.ts` — hook pour les statistiques
+- `src/components/cv/stats-dashboard.tsx` — tableau de bord animé (4 KPI + 2 graphiques + sources)
+- `src/components/cv/sample-selector.tsx` — sélecteur de CV d'exemple (3 profils)
+
+### Fichiers modifiés (5)
+- `src/app/layout.tsx` — ajout du ThemeProvider, lang="fr"
+- `src/components/layout/header.tsx` — ajout du bouton ThemeToggle
+- `src/app/page.tsx` — intégration StatsDashboard + SampleSelector + bouton Retraiter + lien "Pas de CV ?"
+- `src/components/cv/result-panel.tsx` — ajout boutons "Exporter JSON" et "Retraiter" + badge "CV d'exemple"
+- `src/components/cv/upload-zone.tsx` — padding et icône responsifs (plus compact sur mobile)
+- `src/components/cv/stats-dashboard.tsx` — KPI cards compactes sur mobile (line-clamp au lieu de truncate)
+
+## Résultats des vérifications
+- **Lint** : 0 erreur ✅
+- **TypeScript** : 0 erreur dans src/ ✅
+- **Serveur dev** : tourne sans erreur, toutes les routes répondent 200 ✅
+- **agent-browser** :
+  * Page rendue correctement
+  * Toggle dark mode fonctionnel (VLM : 9/10 pour le dark mode)
+  * Sample selector : 3 profils cliquables, génération réussie (91/100 pour senior)
+  * Export JSON : HTTP 200, 6796 bytes, données correctes ✅
+  * Stats dashboard : 4 KPI + graphiques affichés correctement ✅
+  * Boutons "Exporter JSON" et "Retraiter" présents ✅
+- **VLM global** : note 9/10 pour l'interface finale
+- **Mobile** : textes KPI plus coupés, upload zone compacte ✅
+
+## Risques / points non résolus
+- Le scoring des CV d'exemple utilise des scores de démo quand NVIDIA n'est pas configuré. Quand NVIDIA est configuré, le score réel est calculé (peut échouer si l'API a des limites de débit).
+- L'activité "7 derniers jours" affiche des zéros tant qu'il n'y a pas assez d'historique (normal).
+- La fonction "Retraiter" actuelle revient simplement à l'écran de configuration. Une amélioration future pourrait relancer automatiquement le traitement du dernier fichier.
+
+## Priorités recommandées pour le prochain round
+1. **Guide interactif / onboarding** : ajouter un tour guidé pour les nouveaux utilisateurs
+2. **Comparaison de CV** : permettre de comparer 2 CV côte à côte (scores, forces)
+3. **Modèles de CV** : proposer plusieurs templates visuels pour Word/PowerPoint
+4. **Recommandations personnalisées** : améliorer le scoring avec des suggestions concrètes par champ
+5. **Notifications toast** : utiliser le toaster pour confirmer les actions (copie, export, suppression)

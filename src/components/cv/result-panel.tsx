@@ -18,6 +18,8 @@ import {
   Timer,
   Cpu,
   CheckCircle2,
+  FileJson,
+  RefreshCw,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -30,12 +32,16 @@ import type { CvProcessingResult } from '@/lib/cv/types'
 export interface ResultPanelProps {
   result: CvProcessingResult
   onReset: () => void
+  /// Optionnel : permet de relancer le traitement sur le CV courant.
+  onReprocess?: () => void
 }
 
-export function ResultPanel({ result, onReset }: ResultPanelProps) {
+export function ResultPanel({ result, onReset, onReprocess }: ResultPanelProps) {
   const [activeTab, setActiveTab] = useState('score')
 
   const isWord = result.outputFormat === 'word'
+  const isSample = result.extractionModel?.toLowerCase().includes('sample')
+  const exportJsonUrl = `/api/cv/export?id=${encodeURIComponent(result.id)}`
   const fileSize = result.parsedCv
     ? JSON.stringify(result.parsedCv).length
     : 0
@@ -61,6 +67,14 @@ export function ResultPanel({ result, onReset }: ResultPanelProps) {
                 Document {isWord ? 'Word' : 'PowerPoint'} généré et scoring terminé.
               </p>
               <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                {isSample && (
+                  <Badge
+                    variant="outline"
+                    className="border-emerald-300 bg-emerald-100/70 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300"
+                  >
+                    CV d&apos;exemple
+                  </Badge>
+                )}
                 {result.durationMs && (
                   <span className="flex items-center gap-1">
                     <Timer className="h-3 w-3" />
@@ -94,6 +108,26 @@ export function ResultPanel({ result, onReset }: ResultPanelProps) {
                   )}
                   Télécharger {isWord ? 'Word' : 'PowerPoint'}
                 </a>
+              </Button>
+            )}
+            <Button asChild variant="outline" size="lg" className="gap-2">
+              <a
+                href={exportJsonUrl}
+                download={`cv-${result.id.slice(0, 8)}.json`}
+              >
+                <FileJson className="h-4 w-4" />
+                Exporter JSON
+              </a>
+            </Button>
+            {onReprocess && (
+              <Button
+                variant="outline"
+                size="lg"
+                onClick={onReprocess}
+                className="gap-2"
+              >
+                <RefreshCw className="h-4 w-4" />
+                Retraiter
               </Button>
             )}
             <Button variant="outline" size="lg" onClick={onReset} className="gap-2">
