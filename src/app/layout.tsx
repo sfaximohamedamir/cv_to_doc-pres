@@ -21,12 +21,11 @@ export const metadata: Metadata = {
   keywords: ["CV", "resume", "NVIDIA", "Nemotron", "Word", "PowerPoint", "IA", "scoring", "PDF", "extraction"],
   authors: [{ name: "CV Transformer Agent" }],
   icons: {
-    icon: "https://z-cdn.chatglm.cn/z-ai/static/logo.svg",
+    icon: "/favicon.ico",
   },
   openGraph: {
     title: "CV Transformer Agent",
     description: "Transformez votre CV en Word/PowerPoint et obtenez un score IA",
-    url: "https://chat.z.ai",
     siteName: "CV Transformer Agent",
     type: "website",
   },

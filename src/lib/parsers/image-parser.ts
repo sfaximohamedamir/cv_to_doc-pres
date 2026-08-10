@@ -132,3 +132,191 @@ export function bufferToBase64(buffer: Buffer): string {
 export function buildDataUrl(buffer: Buffer, mime: string): string {
   return `data:${mime};base64,${bufferToBase64(buffer)}`;
 }
+
+/**
+ * Convertit n'importe quelle page d'un PDF scanné en une image PNG nette
+ * grâce à PDF.js + @napi-rs/canvas / Sharp.
+ */
+export async function convertScannedPdfToPng(
+  buffer: Buffer
+): Promise<{ buffer: Buffer; mime: string } | null> {
+  // 1. D'abord tenter l'extraction binaire directe (ultra rapide)
+  const directScan = extractEmbeddedImageFromPdf(buffer);
+  if (directScan) return directScan;
+
+  // 2. Tenter le rendu complet de la page PDF en canvas PNG via @napi-rs/canvas
+  const canvasRender = await renderPdfPageToPng(buffer);
+  if (canvasRender) return canvasRender;
+
+  // 3. Sinon, décoder les objets images du PDF avec PDF.js + Sharp
+  try {
+    const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+    const sharpModule = await import('sharp');
+    const sharp = sharpModule.default || sharpModule;
+
+    const data = new Uint8Array(buffer);
+    const doc = await pdfjs.getDocument({
+      data,
+      useSystemFonts: true,
+      disableFontFace: true,
+      verbosity: 0,
+    }).promise;
+
+    for (let pageNum = 1; pageNum <= Math.min(doc.numPages, 3); pageNum++) {
+      const page = await doc.getPage(pageNum);
+      const ops = await page.getOperatorList();
+      const objs = page.objs;
+
+      for (let j = 0; j < ops.fnArray.length; j++) {
+        const fn = ops.fnArray[j];
+        if (
+          fn === pdfjs.OPS.paintImageXObject ||
+          fn === pdfjs.OPS.paintInlineImageXObject ||
+          fn === pdfjs.OPS.paintImageMaskXObject
+        ) {
+          const imgName = ops.argsArray[j][0];
+          const img = objs.get(imgName);
+          if (img && img.width > 100 && img.height > 100) {
+            let channels: 1 | 3 | 4 = 4;
+            if (img.kind === pdfjs.ImageKind.RGB_24BPP) channels = 3;
+            else if (img.kind === pdfjs.ImageKind.GRAYSCALE_1BPP) channels = 1;
+
+            if (img.data && img.data.length === img.width * img.height * channels) {
+              const pngBuffer = await sharp(Buffer.from(img.data), {
+                raw: {
+                  width: img.width,
+                  height: img.height,
+                  channels,
+                },
+              })
+                .png()
+                .toBuffer();
+
+              return { buffer: pngBuffer, mime: 'image/png' };
+            }
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.error('convertScannedPdfToPng :', err);
+  }
+
+  return null;
+}
+
+/**
+ * Rendu haute résolution (scale 2.0) de la 1ère page d'un PDF sous forme de buffer PNG
+ * via PDF.js + @napi-rs/canvas.
+ */
+export async function renderPdfPageToPng(
+  buffer: Buffer
+): Promise<{ buffer: Buffer; mime: string } | null> {
+  try {
+    const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+    const napiCanvas = eval('require')('@napi-rs/canvas');
+    const createCanvas = napiCanvas.createCanvas;
+
+    const data = new Uint8Array(buffer);
+    const doc = await pdfjs.getDocument({
+      data,
+      useSystemFonts: true,
+      disableFontFace: true,
+      verbosity: 0,
+    }).promise;
+
+    if (doc.numPages === 0) return null;
+
+    const page = await doc.getPage(1);
+    const viewport = page.getViewport({ scale: 2.0 });
+
+    const canvas = createCanvas(Math.floor(viewport.width), Math.floor(viewport.height));
+    const ctx = canvas.getContext('2d');
+
+    const renderContext = {
+      canvasContext: ctx as any,
+      viewport,
+    };
+
+    await page.render(renderContext).promise;
+    const pngBuffer = canvas.toBuffer('image/png');
+
+    return { buffer: pngBuffer, mime: 'image/png' };
+  } catch (err) {
+    console.error('renderPdfPageToPng error :', err);
+    return null;
+  }
+}
+
+/**
+ * Extrait la plus grande image intégrée (JPEG ou PNG) depuis un buffer PDF.
+ */
+export function extractEmbeddedImageFromPdf(
+  buffer: Buffer
+): { buffer: Buffer; mime: string } | null {
+  if (!buffer || buffer.length < 100) return null;
+
+  let bestJpeg: Buffer | null = null;
+  let maxJpegSize = 0;
+
+  let i = 0;
+  while (i < buffer.length - 3) {
+    if (buffer[i] === 0xff && buffer[i + 1] === 0xd8 && buffer[i + 2] === 0xff) {
+      const start = i;
+      let j = start + 3;
+      while (j < buffer.length - 1) {
+        if (buffer[j] === 0xff && buffer[j + 1] === 0xd9) {
+          const end = j + 2;
+          const len = end - start;
+          if (len > maxJpegSize && len > 3000) {
+            maxJpegSize = len;
+            bestJpeg = buffer.subarray(start, end);
+          }
+          i = end;
+          break;
+        }
+        j++;
+      }
+      if (j >= buffer.length - 1) break;
+    } else {
+      i++;
+    }
+  }
+
+  if (bestJpeg) {
+    return { buffer: bestJpeg, mime: 'image/jpeg' };
+  }
+
+  let bestPng: Buffer | null = null;
+  let maxPngSize = 0;
+
+  i = 0;
+  while (i < buffer.length - 8) {
+    if (
+      buffer[i] === 0x89 &&
+      buffer[i + 1] === 0x50 &&
+      buffer[i + 2] === 0x4e &&
+      buffer[i + 3] === 0x47
+    ) {
+      const start = i;
+      const iendIndex = buffer.indexOf(Buffer.from([0x49, 0x45, 0x4e, 0x44]), start);
+      if (iendIndex !== -1 && iendIndex + 8 <= buffer.length) {
+        const end = iendIndex + 8;
+        const len = end - start;
+        if (len > maxPngSize && len > 3000) {
+          maxPngSize = len;
+          bestPng = buffer.subarray(start, end);
+        }
+        i = end;
+        continue;
+      }
+    }
+    i++;
+  }
+
+  if (bestPng) {
+    return { buffer: bestPng, mime: 'image/png' };
+  }
+
+  return null;
+}

@@ -15,19 +15,20 @@ import {
   setSetting,
   deleteSetting,
   NVIDIA_API_KEY_SETTING,
+  resolveNvidiaTextModel,
+  setNvidiaTextModel,
 } from '@/lib/settings'
 import { invalidateNvidiaClientCache } from '@/lib/nvidia/client'
 
 export const runtime = 'nodejs'
 
 /**
- * GET — vérifie si la clé API NVIDIA est configurée.
- * Renvoie { configured: boolean, source: "env" | "database" | "none" }
- * Ne renvoie JAMAIS la clé elle-même.
+ * GET — vérifie si la clé API NVIDIA est configurée et renvoie le modèle sélectionné.
  */
 export async function GET() {
   const envKey = process.env.NVIDIA_API_KEY
   const dbKey = await getNvidiaApiKey()
+  const selectedModel = await resolveNvidiaTextModel()
 
   let source: 'env' | 'database' | 'none' = 'none'
   if (envKey) {
@@ -39,17 +40,16 @@ export async function GET() {
   return NextResponse.json({
     configured: Boolean(envKey || dbKey),
     source,
-    // Si la clé vient de l'env, on ne peut pas la supprimer depuis l'UI
     canDelete: !envKey && Boolean(dbKey),
+    selectedModel,
   })
 }
 
 /**
- * PUT — enregistre une nouvelle clé API NVIDIA dans la base de données.
- * Corps JSON : { "apiKey": "nvapi-..." }
+ * PUT — enregistre la clé API NVIDIA et/ou le modèle sélectionné.
  */
 export async function PUT(request: NextRequest) {
-  let body: { apiKey?: string }
+  let body: { apiKey?: string; selectedModel?: string }
   try {
     body = await request.json()
   } catch {
@@ -57,49 +57,40 @@ export async function PUT(request: NextRequest) {
   }
 
   const apiKey = body.apiKey?.trim()
-  if (!apiKey) {
-    return NextResponse.json(
-      { error: "Le champ 'apiKey' est requis." },
-      { status: 400 }
-    )
+  const selectedModel = body.selectedModel?.trim()
+
+  if (selectedModel) {
+    await setNvidiaTextModel(selectedModel)
   }
 
-  // Validation basique : les clés NVIDIA commencent généralement par "nvapi-"
-  if (!apiKey.startsWith('nvapi-')) {
-    return NextResponse.json(
-      {
-        error:
-          "La clé API NVIDIA doit commencer par 'nvapi-'. Vérifiez le format de votre clé.",
-      },
-      { status: 400 }
-    )
-  }
+  if (apiKey) {
+    if (!apiKey.startsWith('nvapi-')) {
+      return NextResponse.json(
+        {
+          error:
+            "La clé API NVIDIA doit commencer par 'nvapi-'. Vérifiez le format de votre clé.",
+        },
+        { status: 400 }
+      )
+    }
 
-  if (apiKey.length < 20) {
-    return NextResponse.json(
-      { error: 'La clé API semble trop courte. Vérifiez que vous avez copié la clé complète.' },
-      { status: 400 }
-    )
-  }
+    if (apiKey.length < 20) {
+      return NextResponse.json(
+        { error: 'La clé API semble trop courte. Vérifiez que vous avez copié la clé complète.' },
+        { status: 400 }
+      )
+    }
 
-  try {
     await setSetting(NVIDIA_API_KEY_SETTING, apiKey, true)
-    // Invalider le cache du client NVIDIA pour forcer la recréation avec la nouvelle clé
     invalidateNvidiaClientCache()
-
-    return NextResponse.json({
-      success: true,
-      message: 'Clé API NVIDIA enregistrée avec succès.',
-      configured: true,
-      source: 'database',
-    })
-  } catch (error) {
-    console.error('[/api/settings/nvidia-key] PUT Erreur :', error)
-    return NextResponse.json(
-      { error: 'Erreur lors de l\'enregistrement de la clé.' },
-      { status: 500 }
-    )
   }
+
+  return NextResponse.json({
+    success: true,
+    message: 'Paramètres enregistrés avec succès.',
+    configured: true,
+    selectedModel: await resolveNvidiaTextModel(),
+  })
 }
 
 /**

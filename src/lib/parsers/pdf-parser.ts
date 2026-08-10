@@ -1,14 +1,13 @@
 /**
  * Parseur PDF — extrait le texte d'un fichier PDF.
  *
- * Utilise la bibliothèque `pdf-parse` (v2, API basée sur la classe `PDFParse`)
- * pour extraire le texte et les métadonnées d'un PDF fourni sous forme de
- * `Buffer` Node.js.
+ * Utilise la bibliothèque `pdf-parse` (v1.1.1) pour extraire le texte et les
+ * métadonnées d'un PDF fourni sous forme de `Buffer` Node.js.
  *
  * Ce module est destiné à un usage serveur (depuis une route API Next.js).
  */
 
-import { PDFParse } from 'pdf-parse';
+import pdfParse from 'pdf-parse';
 
 /**
  * Résultat de l'extraction PDF.
@@ -32,14 +31,7 @@ export interface PdfParseResult {
 export const MIN_SUBSTANTIAL_TEXT_LENGTH = 200;
 
 /**
- * Extrait le texte d'un buffer PDF à l'aide de `pdf-parse` v2.
- *
- * Le flux :
- *  1. On instancie `PDFParse` avec le `Buffer` (la bibliothèque convertit
- *     automatiquement le `Buffer` Node.js en `Uint8Array`).
- *  2. On appelle `getText()` pour récupérer l'intégralité du texte concaténé.
- *  3. On tente (en best-effort) de récupérer les métadonnées via `getInfo()`.
- *  4. On détruit proprement le parser pour libérer la mémoire et le worker.
+ * Extrait le texte d'un buffer PDF à l'aide de `pdf-parse`.
  *
  * @param buffer - Le contenu binaire du fichier PDF.
  * @returns Un objet `PdfParseResult` contenant le texte, le nombre de pages
@@ -70,38 +62,13 @@ export async function parsePdf(buffer: Buffer): Promise<PdfParseResult> {
     );
   }
 
-  let parser: PDFParse | null = null;
-
   try {
-    // `pdf-parse` v2 accepte directement un `Buffer` Node.js (converti en
-    // `Uint8Array` en interne par le constructeur).
-    parser = new PDFParse({ data: buffer });
-
-    // Extraction du texte — `textResult.text` contient toutes les pages
-    // concaténées avec un séparateur par défaut.
-    const textResult = await parser.getText();
-
-    // Récupération best-effort des métadonnées (titre, auteur, dates, ...).
-    // On ne fait pas échouer l'extraction si les métadonnées sont absentes.
-    let info: Record<string, unknown> | undefined;
-    try {
-      const infoResult = await parser.getInfo();
-      if (infoResult?.info != null) {
-        info = infoResult.info as Record<string, unknown>;
-      }
-    } catch {
-      // Métadonnées indisponibles : on ignore silencieusement.
-    }
-
-    const numPages =
-      typeof textResult.total === 'number'
-        ? textResult.total
-        : textResult.pages?.length ?? 0;
+    const data = await pdfParse(buffer);
 
     return {
-      text: textResult.text ?? '',
-      numPages,
-      info,
+      text: data.text ?? '',
+      numPages: data.numpages ?? 0,
+      info: (data.info as Record<string, unknown>) ?? undefined,
     };
   } catch (error) {
     const message =
@@ -109,14 +76,5 @@ export async function parsePdf(buffer: Buffer): Promise<PdfParseResult> {
     throw new Error(
       `Impossible d'extraire le texte du PDF : ${message}`
     );
-  } finally {
-    // Libération du worker et des ressources associées.
-    if (parser) {
-      try {
-        await parser.destroy();
-      } catch {
-        // Échec de nettoyage non bloquant : on ignore.
-      }
-    }
   }
 }

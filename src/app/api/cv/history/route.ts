@@ -63,3 +63,31 @@ export async function GET(request: NextRequest) {
 
   return NextResponse.json({ items, count: items.length })
 }
+
+/**
+ * DELETE /api/cv/history
+ *   - ?status=error : supprime toutes les entrées en erreur
+ *   - (sans filtre)  : supprime tout l'historique
+ */
+export async function DELETE(request: NextRequest) {
+  const { searchParams } = new URL(request.url)
+  const status = searchParams.get('status')
+
+  try {
+    if (status === 'error') {
+      const result = await db.cvRecord.deleteMany({
+        where: { status: 'error' },
+      })
+      return NextResponse.json({ success: true, count: result.count })
+    }
+
+    const result = await db.cvRecord.deleteMany({})
+    return NextResponse.json({ success: true, count: result.count })
+  } catch (error) {
+    console.error('[/api/cv/history] DELETE Erreur :', error)
+    return NextResponse.json(
+      { error: 'Erreur lors de la suppression de l\'historique.' },
+      { status: 500 }
+    )
+  }
+}

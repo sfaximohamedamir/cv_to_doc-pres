@@ -46,6 +46,8 @@ export interface HistoryListProps {
   onSelect: (id: string) => void
   onRefresh: () => void
   onRemove: (id: string) => void
+  onClearErrors?: () => void
+  onClearAll?: () => void
   selectedId?: string | null
 }
 
@@ -82,6 +84,8 @@ export function HistoryList({
   onSelect,
   onRefresh,
   onRemove,
+  onClearErrors,
+  onClearAll,
   selectedId,
 }: HistoryListProps) {
   // États des filtres et de la recherche
@@ -90,6 +94,8 @@ export function HistoryList({
   const [scoreFilter, setScoreFilter] = useState<ScoreFilter>('all')
   const [tagFilter, setTagFilter] = useState<TagFilter>('all')
   const [sortBy, setSortBy] = useState<SortBy>('recent')
+
+  const hasErrors = useMemo(() => items.some((i) => i.status === 'error'), [items])
 
   // Calcul mémoïsé de la liste filtrée et triée
   const filteredItems = useMemo(() => {
@@ -199,20 +205,34 @@ export function HistoryList({
               </Badge>
             )}
         </CardTitle>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-7 w-7"
-          onClick={onRefresh}
-          disabled={loading}
-          title="Rafraîchir"
-        >
-          {loading ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          ) : (
-            <RefreshCw className="h-3.5 w-3.5" />
+        <div className="flex items-center gap-1">
+          {hasErrors && onClearErrors && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 text-[11px] gap-1 text-red-600 border-red-200 hover:bg-red-50 dark:text-red-400 dark:border-red-900 dark:hover:bg-red-950/40"
+              onClick={onClearErrors}
+              title="Supprimer tous les éléments en erreur"
+            >
+              <Trash2 className="h-3 w-3" />
+              Nettoyer erreurs
+            </Button>
           )}
-        </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7"
+            onClick={onRefresh}
+            disabled={loading}
+            title="Rafraîchir"
+          >
+            {loading ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <RefreshCw className="h-3.5 w-3.5" />
+            )}
+          </Button>
+        </div>
       </CardHeader>
 
       {/* Barre de filtres et de recherche — visible uniquement si des items existent */}

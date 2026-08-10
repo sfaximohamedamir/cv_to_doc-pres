@@ -29,6 +29,9 @@ import {
   Search,
   Download,
   Palette,
+  CheckCircle2,
+  FileText,
+  Cpu,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -102,6 +105,7 @@ export default function Home() {
   const [file, setFile] = useState<File | null>(null)
   const [outputFormat, setOutputFormat] = useState<OutputFormat>('word')
   const [language, setLanguage] = useState<string>('français')
+  const [extractionModel, setExtractionModel] = useState<string>('auto')
   const [selectedHistoryId, setSelectedHistoryId] = useState<string | null>(null)
   const [viewedHistory, setViewedHistory] = useState<CvProcessingResult | null>(null)
   const [loadingHistory, setLoadingHistory] = useState(false)
@@ -110,9 +114,19 @@ export default function Home() {
   const [keyboardHelpOpen, setKeyboardHelpOpen] = useState(false)
   const [template, setTemplate] = useState<CvTemplateId>('modern')
 
-  const { isProcessing, steps, result, error, processCv, reset } =
-    useCvProcessing()
-  const { items, loading: historyLoading, refresh, remove } = useCvHistory()
+  const {
+    isProcessing,
+    steps,
+    result,
+    error,
+    awaitingScoringConfirmation,
+    partialResult,
+    processCv,
+    confirmScoring,
+    skipScoring,
+    reset,
+  } = useCvProcessing()
+  const { items, loading: historyLoading, refresh, remove, clearErrors, clearAll } = useCvHistory()
   const { refresh: refreshStats } = useCvStats()
   const { theme, setTheme } = useTheme()
 
@@ -148,11 +162,11 @@ export default function Home() {
     toast.info('Traitement en cours…', {
       description: `Analyse de "${file.name}" avec NVIDIA Nemotron`,
     })
-    await processCv({ file, outputFormat, language: lang, template })
+    await processCv({ file, outputFormat, language: lang, template, extractionModel })
     // Rafraîchir l'historique et les stats après le traitement
     refresh()
     refreshStats()
-  }, [file, outputFormat, language, processCv, refresh, refreshStats, toast, template])
+  }, [file, outputFormat, language, processCv, refresh, refreshStats, template, extractionModel])
 
   const handleReset = useCallback(() => {
     reset()
@@ -375,28 +389,54 @@ export default function Home() {
                     />
                   </div>
 
-                  {/* Langue */}
-                  <div className="space-y-2">
-                    <Label className="flex items-center gap-1.5 text-sm font-medium">
-                      <Languages className="h-3.5 w-3.5" />
-                      4. Langue du CV (optionnel)
-                    </Label>
-                    <Select
-                      value={language}
-                      onValueChange={setLanguage}
-                      disabled={isProcessing}
-                    >
-                      <SelectTrigger className="w-full sm:w-[260px]">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {LANGUAGES.map((l) => (
-                          <SelectItem key={l.value} value={l.value}>
-                            {l.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                  {/* Langue & Modèle d'analyse IA */}
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    {/* Langue */}
+                    <div className="space-y-2">
+                      <Label className="flex items-center gap-1.5 text-sm font-medium">
+                        <Languages className="h-3.5 w-3.5" />
+                        4. Langue du CV
+                      </Label>
+                      <Select
+                        value={language}
+                        onValueChange={setLanguage}
+                        disabled={isProcessing}
+                      >
+                        <SelectTrigger className="w-full">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {LANGUAGES.map((l) => (
+                            <SelectItem key={l.value} value={l.value}>
+                              {l.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {/* Modèle IA d'analyse */}
+                    <div className="space-y-2">
+                      <Label className="flex items-center gap-1.5 text-sm font-medium">
+                        <Cpu className="h-3.5 w-3.5" />
+                        5. Modèle d'analyse IA
+                      </Label>
+                      <Select
+                        value={extractionModel}
+                        onValueChange={setExtractionModel}
+                        disabled={isProcessing}
+                      >
+                        <SelectTrigger className="w-full">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="auto">🤖 Auto-détection (Recommandé)</SelectItem>
+                          <SelectItem value="omni">📷 NVIDIA Nemotron Omni (Vision / Scan / Capture)</SelectItem>
+                          <SelectItem value="glm">📝 Z.ai GLM 5.2 (Grand contexte)</SelectItem>
+                          <SelectItem value="nemotron">⚡ NVIDIA Nemotron 3 Super (Standard)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
 
                   {/* Bouton de traitement */}
@@ -461,21 +501,71 @@ export default function Home() {
 
             {/* Étapes de traitement */}
             <AnimatePresence>
-              {isProcessing && (
+              {(isProcessing || awaitingScoringConfirmation) && (
                 <motion.div
                   initial={{ opacity: 0, height: 0 }}
                   animate={{ opacity: 1, height: 'auto' }}
                   exit={{ opacity: 0, height: 0 }}
                 >
-                  <Card>
+                  <Card className="border-emerald-500/30">
                     <CardHeader>
                       <CardTitle className="flex items-center gap-2 text-base">
                         <Zap className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
                         Progression du traitement
                       </CardTitle>
                     </CardHeader>
-                    <CardContent>
+                    <CardContent className="space-y-4">
                       <ProcessingSteps steps={steps} />
+
+                      {/* Boîte de décision après l'étape 3 (Génération) */}
+                      {awaitingScoringConfirmation && partialResult && (
+                        <motion.div
+                          initial={{ opacity: 0, y: 8 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 p-4 space-y-3 shadow-sm"
+                        >
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div className="flex items-center gap-2 text-sm font-semibold text-emerald-800 dark:text-emerald-300">
+                              <CheckCircle2 className="h-5 w-5 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
+                              Document généré avec succès !
+                            </div>
+                            {partialResult.downloadUrl && (
+                              <Button size="sm" variant="outline" asChild className="h-8 gap-1.5 text-xs border-emerald-300 dark:border-emerald-800 hover:bg-emerald-100 dark:hover:bg-emerald-950">
+                                <a href={partialResult.downloadUrl} download={partialResult.outputFileName}>
+                                  <Download className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                                  Télécharger ({partialResult.outputFormat === 'word' ? 'Word' : 'PowerPoint'})
+                                </a>
+                              </Button>
+                            )}
+                          </div>
+
+                          <p className="text-xs font-medium text-foreground/90">
+                            Voulez-vous continuer avec l'évaluation et le Scoring IA de ce CV ?
+                          </p>
+
+                          <div className="flex flex-wrap gap-2.5 pt-1">
+                            <Button
+                              onClick={confirmScoring}
+                              size="sm"
+                              className="gap-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 text-white hover:from-emerald-700 hover:to-teal-700 text-xs shadow-md"
+                            >
+                              <Sparkles className="h-3.5 w-3.5" />
+                              Oui, continuer le scoring IA
+                            </Button>
+
+                            <Button
+                              onClick={skipScoring}
+                              variant="secondary"
+                              size="sm"
+                              className="gap-1.5 text-xs border border-border"
+                            >
+                              <FileText className="h-3.5 w-3.5" />
+                              Non, obtenir uniquement le fichier
+                            </Button>
+                          </div>
+                        </motion.div>
+                      )}
+
                       {error && (
                         <div className="mt-4 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
                           {error}
@@ -554,6 +644,8 @@ export default function Home() {
               onSelect={handleSelectHistory}
               onRefresh={refresh}
               onRemove={handleRemove}
+              onClearErrors={clearErrors}
+              onClearAll={clearAll}
               selectedId={selectedHistoryId}
             />
             <FullTextSearch

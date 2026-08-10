@@ -266,13 +266,74 @@ export async function callNvidiaOmniModel(
 }
 
 /**
+/**
+ * Tente de réparer un flux JSON tronqué (par exemple coupé par le max_tokens).
+ */
+function tryRepairTruncatedJson(str: string): any {
+  let cleaned = str.trim();
+  const firstBrace = cleaned.search(/[\{\[]/);
+  if (firstBrace === -1) return null;
+  cleaned = cleaned.slice(firstBrace);
+
+  try {
+    return JSON.parse(cleaned);
+  } catch {}
+
+  let stack: string[] = [];
+  let inString = false;
+  let isEscaped = false;
+
+  for (let i = 0; i < cleaned.length; i++) {
+    const char = cleaned[i];
+
+    if (isEscaped) {
+      isEscaped = false;
+      continue;
+    }
+    if (char === '\\') {
+      isEscaped = true;
+      continue;
+    }
+    if (char === '"') {
+      inString = !inString;
+      continue;
+    }
+    if (!inString) {
+      if (char === '{' || char === '[') {
+        stack.push(char);
+      } else if (char === '}' || char === ']') {
+        if (stack.length > 0) stack.pop();
+      }
+    }
+  }
+
+  if (inString) {
+    cleaned += '"';
+  }
+
+  cleaned = cleaned.replace(/,\s*$/, '');
+
+  while (stack.length > 0) {
+    const openChar = stack.pop();
+    if (openChar === '{') cleaned += '}';
+    else if (openChar === '[') cleaned += ']';
+  }
+
+  try {
+    return JSON.parse(cleaned);
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Extrait de manière robuste un objet JSON depuis la réponse d'un modèle.
  *
  * Gère les cas suivants :
  *  - JSON pur (entouré ou non d'espaces).
  *  - JSON entouré de fences markdown ```json ... ``` ou ``` ... ```.
  *  - JSON précédé ou suivi de texte explicatif.
- *  - Tableau JSON `[...]` en plus des objets `{...}`.
+ *  - JSON tronqué par la limite de tokens (réparation automatique).
  *
  * @param text - La réponse brute du modèle.
  * @returns L'objet ou tableau JavaScript parsé.
@@ -299,7 +360,8 @@ export async function extractJsonFromResponse(text: string): Promise<any> {
     try {
       return JSON.parse(inner);
     } catch {
-      // On tente un nettoyage plus poussé plus bas.
+      const repaired = tryRepairTruncatedJson(inner);
+      if (repaired) return repaired;
     }
   }
 
@@ -314,7 +376,13 @@ export async function extractJsonFromResponse(text: string): Promise<any> {
     }
   }
 
-  // 4. Dernier recours : retirer les caractères de contrôle et réessayer.
+  // 4. Réparation automatique d'un JSON tronqué à la fin
+  const repaired = tryRepairTruncatedJson(trimmed);
+  if (repaired) {
+    return repaired;
+  }
+
+  // 5. Dernier recours : retirer les caractères de contrôle et réessayer.
   const sanitized = trimmed
     .replace(/[\u0000-\u001F\u007F]/g, ' ')
     .replace(/```/g, '')
@@ -324,12 +392,12 @@ export async function extractJsonFromResponse(text: string): Promise<any> {
   if (sanitizedCandidate) {
     try {
       return JSON.parse(sanitizedCandidate);
-    } catch (err) {
-      throw new Error(
-        `extractJsonFromResponse : JSON invalide après nettoyage. ` +
-          `Détail : ${err instanceof Error ? err.message : String(err)}`
-      );
-    }
+    } catch {}
+  }
+
+  const sanitizedRepaired = tryRepairTruncatedJson(sanitized);
+  if (sanitizedRepaired) {
+    return sanitizedRepaired;
   }
 
   throw new Error(

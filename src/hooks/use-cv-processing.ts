@@ -33,13 +33,22 @@ export interface UseCvProcessingReturn {
   result: CvProcessingResult | null
   /// Message d'erreur éventuel
   error: string | null
-  /// Lance le traitement d'un fichier
+  /// Indique si l'application attend la décision de l'utilisateur pour le scoring
+  awaitingScoringConfirmation: boolean
+  /// Résultat intermédiaire après la génération du fichier (avant scoring)
+  partialResult: CvProcessingResult | null
+  /// Lance le traitement d'un fichier (génère le document et fait une pause)
   processCv: (params: {
     file: File
     outputFormat: OutputFormat
     language?: string
     template?: string
+    extractionModel?: string
   }) => Promise<void>
+  /// Lance l'étape de scoring après confirmation de l'utilisateur
+  confirmScoring: () => Promise<void>
+  /// Saute le scoring et finalise avec uniquement le fichier généré
+  skipScoring: () => void
   /// Réinitialise l'état
   reset: () => void
 }
@@ -48,6 +57,8 @@ export function useCvProcessing(): UseCvProcessingReturn {
   const [isProcessing, setIsProcessing] = useState(false)
   const [steps, setSteps] = useState<ProcessingStep[]>(DEFAULT_STEPS)
   const [result, setResult] = useState<CvProcessingResult | null>(null)
+  const [partialResult, setPartialResult] = useState<CvProcessingResult | null>(null)
+  const [awaitingScoringConfirmation, setAwaitingScoringConfirmation] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const updateStep = useCallback(
@@ -63,6 +74,8 @@ export function useCvProcessing(): UseCvProcessingReturn {
     setIsProcessing(false)
     setSteps(DEFAULT_STEPS)
     setResult(null)
+    setPartialResult(null)
+    setAwaitingScoringConfirmation(false)
     setError(null)
   }, [])
 
@@ -72,15 +85,19 @@ export function useCvProcessing(): UseCvProcessingReturn {
       outputFormat,
       language,
       template,
+      extractionModel,
     }: {
       file: File
       outputFormat: OutputFormat
       language?: string
       template?: string
+      extractionModel?: string
     }) => {
       setIsProcessing(true)
       setError(null)
       setResult(null)
+      setPartialResult(null)
+      setAwaitingScoringConfirmation(false)
       setSteps(DEFAULT_STEPS)
 
       // Étape 1 : téléversement
@@ -90,18 +107,17 @@ export function useCvProcessing(): UseCvProcessingReturn {
         const formData = new FormData()
         formData.append('file', file)
         formData.append('outputFormat', outputFormat)
+        formData.append('skipScoring', 'true')
         if (language) formData.append('language', language)
         if (template) formData.append('template', template)
+        if (extractionModel) formData.append('extractionModel', extractionModel)
 
         updateStep('upload', 'done')
         updateStep('extract', 'running')
 
-        // Le serveur fait tout le pipeline d'un coup ; on simule la
-        // progression des étapes côté client avec des délais progressifs
-        // pour donner un retour visuel pendant l'attente.
         const progressTimers: ReturnType<typeof setTimeout>[] = []
 
-        // Après 2,5 s, si l'extraction n'est pas finie, on passe à "conversion"
+        // Après 2 s, passer visuellement à la conversion
         progressTimers.push(
           setTimeout(() => {
             setSteps((prev) =>
@@ -118,27 +134,7 @@ export function useCvProcessing(): UseCvProcessingReturn {
                   : s
               )
             )
-          }, 2500)
-        )
-
-        // Après 6 s, on passe au scoring
-        progressTimers.push(
-          setTimeout(() => {
-            setSteps((prev) =>
-              prev.map((s) =>
-                s.id === 'convert' && s.status === 'running'
-                  ? { ...s, status: 'done' }
-                  : s
-              )
-            )
-            setSteps((prev) =>
-              prev.map((s) =>
-                s.id === 'score' && s.status === 'pending'
-                  ? { ...s, status: 'running' }
-                  : s
-              )
-            )
-          }, 6000)
+          }, 2000)
         )
 
         const response = await fetch('/api/cv/process', {
@@ -146,25 +142,36 @@ export function useCvProcessing(): UseCvProcessingReturn {
           body: formData,
         })
 
-        // Nettoyer les minuteurs
         progressTimers.forEach((t) => clearTimeout(t))
 
-        const data = await response.json()
-
-        if (!response.ok) {
-          throw new Error(data.error || `Erreur ${response.status}`)
+        let data: any = {}
+        const rawText = await response.text()
+        if (rawText) {
+          try {
+            data = JSON.parse(rawText)
+          } catch {
+            data = { error: rawText }
+          }
         }
 
-        // Tout est terminé côté serveur : marquer toutes les étapes comme done.
+        if (!response.ok) {
+          throw new Error(data.error || `Erreur serveur ${response.status}`)
+        }
+
+        // Marquer les 3 premières étapes comme 'done'
         setSteps((prev) =>
-          prev.map((s) => ({ ...s, status: 'done' as const }))
+          prev.map((s) =>
+            s.id === 'score' ? { ...s, status: 'pending' as const } : { ...s, status: 'done' as const }
+          )
         )
 
-        setResult(data as CvProcessingResult)
+        const res = data as CvProcessingResult
+        setPartialResult(res)
+        setResult(res)
+        setAwaitingScoringConfirmation(true)
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Erreur inconnue.'
         setError(message)
-        // Marquer l'étape en cours comme erreur.
         setSteps((prev) =>
           prev.map((s) =>
             s.status === 'running'
@@ -179,5 +186,57 @@ export function useCvProcessing(): UseCvProcessingReturn {
     [updateStep]
   )
 
-  return { isProcessing, steps, result, error, processCv, reset }
+  const confirmScoring = useCallback(async () => {
+    if (!partialResult?.id) return
+    setIsProcessing(true)
+    setAwaitingScoringConfirmation(false)
+    updateStep('score', 'running')
+
+    try {
+      const res = await fetch('/api/cv/score-record', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: partialResult.id }),
+      })
+
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Erreur lors du scoring')
+
+      updateStep('score', 'done')
+      const updatedResult: CvProcessingResult = {
+        ...partialResult,
+        status: 'done',
+        score: data.score,
+        scoringModel: data.scoringModel,
+      }
+      setResult(updatedResult)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Erreur de scoring.'
+      setError(message)
+      updateStep('score', 'error', message)
+    } finally {
+      setIsProcessing(false)
+    }
+  }, [partialResult, updateStep])
+
+  const skipScoring = useCallback(() => {
+    setAwaitingScoringConfirmation(false)
+    setIsProcessing(false)
+    setSteps((prev) =>
+      prev.map((s) => (s.id === 'score' ? { ...s, status: 'done' as const, detail: 'Ignoré à la demande' } : s))
+    )
+  }, [])
+
+  return {
+    isProcessing,
+    steps,
+    result,
+    error,
+    awaitingScoringConfirmation,
+    partialResult,
+    processCv,
+    confirmScoring,
+    skipScoring,
+    reset,
+  }
 }

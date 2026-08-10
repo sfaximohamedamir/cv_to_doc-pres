@@ -27,7 +27,9 @@ import {
   ExternalLink,
   ShieldCheck,
   Copy,
+  Cpu,
 } from 'lucide-react'
+import { TEXT_MODELS } from '@/lib/nvidia/models'
 import {
   Dialog,
   DialogContent,
@@ -68,7 +70,8 @@ export function SettingsDialog({
   const [deleting, setDeleting] = useState(false)
   const [testState, setTestState] = useState<TestState>('idle')
   const [testMessage, setTestMessage] = useState('')
-  const [status, setStatus] = useState<KeyStatus | null>(null)
+  const [selectedModel, setSelectedModel] = useState<string>('z-ai/glm-5.2')
+  const [status, setStatus] = useState<(KeyStatus & { selectedModel?: string }) | null>(null)
 
   // Récupérer le statut actuel de la clé à l'ouverture du dialog
   const fetchStatus = useCallback(async () => {
@@ -77,6 +80,9 @@ export function SettingsDialog({
       if (res.ok) {
         const data = await res.json()
         setStatus(data)
+        if (data.selectedModel) {
+          setSelectedModel(data.selectedModel)
+        }
       }
     } catch {
       /* ignore */
@@ -92,19 +98,17 @@ export function SettingsDialog({
     }
   }, [open, fetchStatus])
 
-  // Enregistrer la clé API
+  // Enregistrer la clé API et/ou le modèle
   const handleSave = useCallback(async () => {
-    if (!apiKey.trim()) {
-      toast.error('Veuillez saisir une clé API')
-      return
-    }
-
     setSaving(true)
     try {
       const res = await fetch('/api/settings/nvidia-key', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ apiKey: apiKey.trim() }),
+        body: JSON.stringify({
+          ...(apiKey.trim() ? { apiKey: apiKey.trim() } : {}),
+          selectedModel,
+        }),
       })
       const data = await res.json()
 
@@ -112,8 +116,8 @@ export function SettingsDialog({
         throw new Error(data.error || 'Erreur lors de l\'enregistrement')
       }
 
-      toast.success('Clé API enregistrée', {
-        description: 'L\'agent NVIDIA Nemotron est maintenant activé.',
+      toast.success('Paramètres enregistrés', {
+        description: `Modèle sélectionné : ${selectedModel}`,
       })
       setApiKey('')
       await fetchStatus()
@@ -125,7 +129,7 @@ export function SettingsDialog({
     } finally {
       setSaving(false)
     }
-  }, [apiKey, fetchStatus, onConfigChanged])
+  }, [apiKey, selectedModel, fetchStatus, onConfigChanged])
 
   // Tester la clé API (celle saisie ou celle configurée)
   const handleTest = useCallback(async () => {
@@ -245,6 +249,29 @@ export function SettingsDialog({
             )}
           </div>
 
+          {/* Sélection du Modèle Texte */}
+          <div className="space-y-2">
+            <Label htmlFor="model-select" className="text-sm font-medium flex items-center gap-2">
+              <Cpu className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+              Modèle d'IA de traitement (Texte & Scoring)
+            </Label>
+            <select
+              id="model-select"
+              value={selectedModel}
+              onChange={(e) => setSelectedModel(e.target.value)}
+              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring dark:bg-zinc-900"
+            >
+              {TEXT_MODELS.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.name} — {m.description}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-muted-foreground">
+              Sélectionnez <span className="font-semibold text-emerald-600 dark:text-emerald-400">Z.ai GLM 5.2</span> pour bénéficier d'une très grande fenêtre de contexte (évite la saturation de l'API Nemotron).
+            </p>
+          </div>
+
           {/* Saisie de la clé */}
           <div className="space-y-2">
             <Label htmlFor="api-key" className="text-sm font-medium">
@@ -279,7 +306,7 @@ export function SettingsDialog({
           <div className="flex flex-wrap gap-2">
             <Button
               onClick={handleSave}
-              disabled={!apiKey.trim() || saving}
+              disabled={saving}
               className="gap-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 text-white hover:from-emerald-700 hover:to-teal-700"
             >
               {saving ? (

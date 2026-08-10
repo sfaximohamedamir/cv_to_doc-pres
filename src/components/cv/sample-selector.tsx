@@ -106,7 +106,15 @@ export function SampleSelector({
         `&type=${encodeURIComponent(type)}` +
         (templateId ? `&template=${encodeURIComponent(templateId)}` : '')
       const res = await fetch(url, { method: 'GET' })
-      const data = await res.json()
+      let data: any = {}
+      const rawText = await res.text()
+      if (rawText) {
+        try {
+          data = JSON.parse(rawText)
+        } catch {
+          data = { error: rawText }
+        }
+      }
       if (!res.ok) {
         throw new Error(
           (data && (data.error as string)) || `Erreur ${res.status}`

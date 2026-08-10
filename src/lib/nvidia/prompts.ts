@@ -136,24 +136,8 @@ Schéma JSON STRICT attendu en sortie :
 ${buildStructuredExtractionGuidance()}`;
 
   const user = `Voici le contenu d'un CV à extraire et structurer.
-
-Réponds UNIQUEMENT avec un objet JSON valide conforme au schéma suivant.
+Réponds UNIQUEMENT avec un objet JSON valide conforme au schéma défini dans le prompt système.
 N'ajoute AUCUN texte explicatif, AUCUN markdown, AUCUNE balise de code.
-
-Schéma attendu :
-${buildStructuredExtractionGuidance()}
-
-Rappels importants :
-- "personalInfo.fullName" est obligatoire. Si tu ne trouves pas de nom complet,
-  utilise "Nom non identifié".
-- Toutes les clés présentes dans le schéma doivent exister dans ta réponse.
-- Pour chaque expérience / formation, les champs title/degree, company/institution,
-  startDate et endDate sont obligatoires.
-- "skills" doit contenir TOUTES les compétences mentionnées (techniques, logiciels,
-  langues de programmation, outils, méthodologies, soft skills, etc.).
-- "languages" doit contenir uniquement les langues humaines parlées/écrites
-  (français, anglais, espagnol, ...), PAS les langages de programmation.
-- "detectedLanguage" doit refléter la langue dominante du CV.
 
 Contenu du CV à traiter :`;
 

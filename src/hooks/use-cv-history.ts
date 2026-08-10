@@ -32,6 +32,8 @@ export interface UseCvHistoryReturn {
   error: string | null
   refresh: () => Promise<void>
   remove: (id: string) => Promise<void>
+  clearErrors: () => Promise<void>
+  clearAll: () => Promise<void>
 }
 
 export function useCvHistory(): UseCvHistoryReturn {
@@ -64,9 +66,29 @@ export function useCvHistory(): UseCvHistoryReturn {
     }
   }, [])
 
+  const clearErrors = useCallback(async () => {
+    try {
+      const res = await fetch('/api/cv/history?status=error', { method: 'DELETE' })
+      if (!res.ok) throw new Error(`Erreur ${res.status}`)
+      setItems((prev) => prev.filter((i) => i.status !== 'error'))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erreur de suppression.')
+    }
+  }, [])
+
+  const clearAll = useCallback(async () => {
+    try {
+      const res = await fetch('/api/cv/history', { method: 'DELETE' })
+      if (!res.ok) throw new Error(`Erreur ${res.status}`)
+      setItems([])
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erreur de suppression.')
+    }
+  }, [])
+
   useEffect(() => {
     refresh()
   }, [refresh])
 
-  return { items, loading, error, refresh, remove }
+  return { items, loading, error, refresh, remove, clearErrors, clearAll }
 }

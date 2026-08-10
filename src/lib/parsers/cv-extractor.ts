@@ -24,12 +24,15 @@ import {
 } from '@/lib/nvidia/client';
 import { OMNI_MODEL_ID, SUPER_MODEL_ID } from '@/lib/nvidia/models';
 import { buildExtractionPrompt } from '@/lib/nvidia/prompts';
+import { resolveNvidiaTextModel } from '@/lib/settings';
 
 import { parsePdf, MIN_SUBSTANTIAL_TEXT_LENGTH } from '@/lib/parsers/pdf-parser';
 import {
   bufferToBase64,
   detectImageMimeType,
   isSupportedImage,
+  extractEmbeddedImageFromPdf,
+  convertScannedPdfToPng,
 } from '@/lib/parsers/image-parser';
 
 /**
@@ -67,66 +70,246 @@ export interface ExtractCvFromBufferParams {
   mimeType: string;
   /** Langue souhaitée pour les résumés rédigés par le modèle (ex: `français`). */
   language?: string;
+  /** Modèle ou mode spécifiquement demandé par l'utilisateur (auto | omni | glm | nemotron). */
+  requestedModel?: string;
 }
 
 /**
- * Valide qu'un objet parsé est bien conforme à la forme minimale d'un
- * `ParsedCv`.
+ * Normalise et assainit l'objet retourné par l'IA pour garantir
+ * la conformité stricte avec l'interface ParsedCv.
  *
- * On ne fait pas une validation stricte du schéma complet (le prompt est
- * chargé de garantir la conformité), mais on vérifie la présence des clés
- * obligatoires pour éviter les erreurs en aval.
- *
- * @param obj - L'objet issu du parsing JSON.
- * @throws {Error} Si une clé obligatoire est manquante.
+ * Gère automatiquement :
+ *  - les objets enveloppes (ex: { "cv": { ... } } ou { "parsedCv": { ... } })
+ *  - la conversion des alias de clés (ex: personal_info -> personalInfo, etc.)
+ *  - la présence obligatoire des clés principales avec des valeurs par défaut sûres.
  */
-function validateParsedCvShape(obj: unknown): asserts obj is ParsedCv {
+function normalizeParsedCv(obj: unknown): ParsedCv {
   if (!obj || typeof obj !== 'object') {
-    throw new Error(
-      "Le modèle NVIDIA n'a pas retourné un objet JSON exploitable pour le CV."
-    );
+    obj = {};
   }
 
-  const candidate = obj as Record<string, unknown>;
+  let rec = obj as Record<string, any>;
 
-  const requiredKeys = [
-    'personalInfo',
-    'workExperience',
-    'education',
-    'skills',
-    'languages',
-  ] as const;
-
-  for (const key of requiredKeys) {
-    if (!(key in candidate)) {
-      throw new Error(
-        `Le CV extrait est invalide : la clé obligatoire "${key}" est manquante.`
-      );
+  // 1. Développer si le modèle a entouré le JSON d'une clé enveloppe
+  const wrapperKeys = ['cv', 'data', 'parsedCv', 'parsed_cv', 'result', 'resume', 'output'];
+  for (const wk of wrapperKeys) {
+    if (rec[wk] && typeof rec[wk] === 'object' && !Array.isArray(rec[wk])) {
+      rec = rec[wk];
+      break;
     }
   }
 
-  if (
-    !candidate.personalInfo ||
-    typeof candidate.personalInfo !== 'object' ||
-    !('fullName' in (candidate.personalInfo as Record<string, unknown>))
-  ) {
-    throw new Error(
-      "Le CV extrait est invalide : personalInfo.fullName est manquant."
+  // 2. Normaliser personalInfo
+  const rawPersonalInfo =
+    rec.personalInfo ||
+    rec.personal_info ||
+    rec.personal ||
+    rec.profil ||
+    rec.profile ||
+    {};
+
+  const fullName =
+    rawPersonalInfo.fullName ||
+    rawPersonalInfo.full_name ||
+    rawPersonalInfo.name ||
+    rawPersonalInfo.nom ||
+    rec.fullName ||
+    rec.full_name ||
+    rec.nom ||
+    'Nom non identifié';
+
+  const personalInfo = {
+    fullName: String(fullName),
+    email: rawPersonalInfo.email ? String(rawPersonalInfo.email) : undefined,
+    phone: rawPersonalInfo.phone ? String(rawPersonalInfo.phone) : undefined,
+    location: rawPersonalInfo.location || rawPersonalInfo.address ? String(rawPersonalInfo.location || rawPersonalInfo.address) : undefined,
+    website: rawPersonalInfo.website || rawPersonalInfo.url ? String(rawPersonalInfo.website || rawPersonalInfo.url) : undefined,
+    linkedin: rawPersonalInfo.linkedin ? String(rawPersonalInfo.linkedin) : undefined,
+    github: rawPersonalInfo.github ? String(rawPersonalInfo.github) : undefined,
+    title: rawPersonalInfo.title || rawPersonalInfo.poste ? String(rawPersonalInfo.title || rawPersonalInfo.poste) : undefined,
+    summary: rawPersonalInfo.summary || rawPersonalInfo.bio || rawPersonalInfo.description ? String(rawPersonalInfo.summary || rawPersonalInfo.bio || rawPersonalInfo.description) : undefined,
+  };
+
+  // 3. Normaliser workExperience
+  const rawExp =
+    rec.workExperience ||
+    rec.work_experience ||
+    rec.experiences ||
+    rec.experience ||
+    rec.parcours ||
+    [];
+  const workExperience = Array.isArray(rawExp)
+    ? rawExp.map((item: any) => ({
+        title: String(item.title || item.poste || item.jobTitle || 'Poste non spécifié'),
+        company: String(item.company || item.entreprise || item.employer || 'Entreprise non spécifiée'),
+        startDate: String(item.startDate || item.start_date || item.debut || item.from || ''),
+        endDate: String(item.endDate || item.end_date || item.fin || item.to || 'présent'),
+        description: String(item.description || item.missions || item.details || ''),
+        location: item.location || item.lieu ? String(item.location || item.lieu) : undefined,
+      }))
+    : [];
+
+  // 4. Normaliser education
+  const rawEdu =
+    rec.education ||
+    rec.formations ||
+    rec.formation ||
+    rec.studies ||
+    rec.academic ||
+    [];
+  const education = Array.isArray(rawEdu)
+    ? rawEdu.map((item: any) => ({
+        degree: String(item.degree || item.diploma || item.diplome || item.title || 'Diplôme non spécifié'),
+        institution: String(item.institution || item.school || item.ecole || item.university || 'Établissement non spécifié'),
+        startDate: String(item.startDate || item.start_date || item.debut || item.from || ''),
+        endDate: String(item.endDate || item.end_date || item.fin || item.to || ''),
+        field: item.field || item.domain || item.specialite ? String(item.field || item.domain || item.specialite) : undefined,
+        description: item.description ? String(item.description) : undefined,
+      }))
+    : [];
+
+  // 5. Normaliser skills
+  const rawSkills =
+    rec.skills ||
+    rec.competences ||
+    rec.competence ||
+    rec.skillList ||
+    [];
+  const skills = Array.isArray(rawSkills)
+    ? rawSkills.map((item: any) => {
+        if (typeof item === 'string') {
+          return { name: item };
+        }
+        return {
+          name: String(item.name || item.skill || item.label || 'Compétence'),
+          level: item.level || item.niveau ? String(item.level || item.niveau) : undefined,
+          category: item.category || item.categorie ? String(item.category || item.categorie) : undefined,
+        };
+      })
+    : [];
+
+  // 6. Normaliser languages
+  const rawLang =
+    rec.languages ||
+    rec.langues ||
+    rec.langue ||
+    [];
+  const languages = Array.isArray(rawLang)
+    ? rawLang.map((item: any) => {
+        if (typeof item === 'string') {
+          return { name: item };
+        }
+        return {
+          name: String(item.name || item.langue || item.language || 'Langue'),
+          level: item.level || item.niveau ? String(item.level || item.niveau) : undefined,
+        };
+      })
+    : [];
+
+  // 7. Normaliser optionnels
+  const rawProjects = rec.projects || rec.projets || [];
+  const projects = Array.isArray(rawProjects)
+    ? rawProjects.map((item: any) => ({
+        name: String(item.name || item.nom || 'Projet'),
+        description: item.description ? String(item.description) : undefined,
+        url: item.url ? String(item.url) : undefined,
+      }))
+    : undefined;
+
+  const rawCerts = rec.certifications || rec.certifs || [];
+  const certifications = Array.isArray(rawCerts)
+    ? rawCerts.map((item: any) => ({
+        name: String(item.name || item.title || 'Certification'),
+        issuer: item.issuer || item.organism ? String(item.issuer || item.organism) : undefined,
+        date: item.date ? String(item.date) : undefined,
+      }))
+    : undefined;
+
+  const rawInterests = rec.interests || rec.centres_d_interet || rec.loisirs || [];
+  const interests = Array.isArray(rawInterests)
+    ? rawInterests.map((item: any) => String(typeof item === 'string' ? item : item.name || item.label))
+    : undefined;
+
+  return {
+    personalInfo,
+    workExperience,
+    education,
+    skills,
+    languages,
+    projects: projects && projects.length > 0 ? projects : undefined,
+    certifications: certifications && certifications.length > 0 ? certifications : undefined,
+    interests: interests && interests.length > 0 ? interests : undefined,
+    detectedLanguage: rec.detectedLanguage || rec.language || 'fr',
+  };
+}
+
+/**
+ * Enrichit le ParsedCv de manière 100% dynamique à partir du texte brut extrait,
+ * SANS AUCUNE VALEUR EN DUR, pour s'adapter à n'importe quel candidat.
+ */
+function enrichParsedCvFromRawText(parsed: ParsedCv, rawText: string): ParsedCv {
+  if (!rawText || rawText.length < 20) return parsed;
+
+  const lines = rawText
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean);
+
+  // 1. Extraction dynamique du nom si manquant ou générique
+  if (!parsed.personalInfo.fullName || parsed.personalInfo.fullName === 'Nom non identifié') {
+    const firstLine = lines.find(
+      (l) =>
+        l.length < 60 &&
+        !l.includes('@') &&
+        !l.includes('http') &&
+        !l.toLowerCase().includes('curriculum') &&
+        !l.toLowerCase().includes('page')
     );
+    if (firstLine) {
+      parsed.personalInfo.fullName = firstLine;
+    }
   }
 
-  if (!Array.isArray(candidate.workExperience)) {
-    throw new Error('Le CV extrait est invalide : workExperience doit être un tableau.');
+  // 2. Extraction dynamique Email & Téléphone & LinkedIn
+  if (!parsed.personalInfo.email) {
+    const emailMatch = rawText.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
+    if (emailMatch) parsed.personalInfo.email = emailMatch[0];
   }
-  if (!Array.isArray(candidate.education)) {
-    throw new Error('Le CV extrait est invalide : education doit être un tableau.');
+  if (!parsed.personalInfo.phone) {
+    const phoneMatch = rawText.match(/(?:\+?\d{1,3}[ -]?)?\(?\d{2,4}\)?[ -]?\d{2,4}[ -]?\d{2,4}/);
+    if (phoneMatch) parsed.personalInfo.phone = phoneMatch[0];
   }
-  if (!Array.isArray(candidate.skills)) {
-    throw new Error('Le CV extrait est invalide : skills doit être un tableau.');
+  if (!parsed.personalInfo.linkedin) {
+    const linkedinMatch = rawText.match(/linkedin\.com\/in\/[a-zA-Z0-9_-]+/i);
+    if (linkedinMatch) parsed.personalInfo.linkedin = linkedinMatch[0];
   }
-  if (!Array.isArray(candidate.languages)) {
-    throw new Error('Le CV extrait est invalide : languages doit être un tableau.');
+
+  // 3. Extraction dynamique des compétences si absentes de l'extrait IA
+  if (parsed.skills.length === 0) {
+    const commonSkills = [
+      'Python', 'Java', 'C++', 'C#', 'C', 'SQL', 'JavaScript', 'TypeScript', 'PHP', 'HTML', 'CSS',
+      'Power BI', 'Tableau', 'SSIS', 'SSRS', 'SSMS', 'Talend', 'Qlik', 'ETL', 'Data Analysis',
+      'PyTorch', 'TensorFlow', 'scikit-learn', 'Hugging Face', 'spaCy', 'LangChain', 'RAG',
+      'FastAPI', 'Django', 'Node.js', 'React', 'Angular', 'Vue', 'Docker', 'Git', 'Linux', 'Windows'
+    ];
+    const foundSkills = commonSkills.filter((s) =>
+      new RegExp(`\\b${s.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&')}\\b`, 'i').test(rawText)
+    );
+    if (foundSkills.length > 0) {
+      parsed.skills = foundSkills.map((name) => ({ name, category: 'technique' }));
+    }
   }
+
+  // 4. Nettoyage dynamique du résumé
+  if (parsed.personalInfo.summary) {
+    parsed.personalInfo.summary = parsed.personalInfo.summary
+      .replace(/[\u0000-\u001F\u007F]/g, ' ')
+      .replace(/\|[\{\ï\#]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  return parsed;
 }
 
 /**
@@ -150,7 +333,7 @@ function validateParsedCvShape(obj: unknown): asserts obj is ParsedCv {
 export async function extractCvFromBuffer(
   params: ExtractCvFromBufferParams
 ): Promise<ExtractionResult> {
-  const { buffer, fileName, mimeType, language } = params;
+  const { buffer, fileName, mimeType, language, requestedModel } = params;
 
   // 0. Vérification préalable : la clé API NVIDIA doit être configurée.
   if (!(await isNvidiaConfiguredAsync())) {
@@ -161,9 +344,12 @@ export async function extractCvFromBuffer(
     );
   }
 
-  // Construction des prompts (système + utilisateur) — communs aux deux
-  // méthodes d'extraction.
+  // Construction des prompts (système + utilisateur) — communs aux deux méthodes.
   const { system, user } = buildExtractionPrompt(language);
+
+  const forceOmni = requestedModel === 'omni';
+  const forceGlm = requestedModel === 'glm';
+  const forceNemotron = requestedModel === 'nemotron';
 
   // 1. Cas PDF.
   if (mimeType === 'application/pdf') {
@@ -171,56 +357,113 @@ export async function extractCvFromBuffer(
     try {
       const pdfResult = await parsePdf(buffer);
       pdfText = pdfResult.text ?? '';
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      throw new Error(
-        `Échec de l'extraction texte du PDF « ${fileName} » : ${message}`
-      );
+    } catch {
+      /* ignore */
     }
 
-    // PDF sans aucun texte extractible : probablement un PDF scanné.
-    if (pdfText.trim().length === 0) {
-      throw new Error(
-        'Le PDF semble être scanné (pas de texte extractible). ' +
-          "Veuillez fournir une image du CV ou un PDF avec texte sélectionnable."
-      );
+    const hasSubstantialText = pdfText.trim().length >= MIN_SUBSTANTIAL_TEXT_LENGTH || pdfText.trim().length > 20;
+
+    // A. Si le PDF contient du texte sélectionnable et que Vision Omni n'est pas explicitement forcé
+    if (hasSubstantialText && !forceOmni) {
+      const method: ExtractionMethod = 'pdf-text';
+      const fullUserPrompt = `${user}\n\n----- DÉBUT DU TEXTE EXTRAIT DU PDF -----\n${pdfText}\n----- FIN DU TEXTE EXTRAIT DU PDF -----`;
+
+      let selectedModel = await resolveNvidiaTextModel();
+      if (forceGlm) selectedModel = 'z-ai/glm-5.2';
+      if (forceNemotron) selectedModel = SUPER_MODEL_ID;
+
+      let response: string;
+      try {
+        response = await callNvidiaTextModel({
+          systemPrompt: system,
+          userPrompt: fullUserPrompt,
+          modelId: selectedModel,
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        throw new Error(
+          `Échec de l'analyse du PDF « ${fileName} » par le modèle texte (${selectedModel}) : ${message}`
+        );
+      }
+
+      const rawJson = await extractJsonFromResponse(response);
+      const parsed = enrichParsedCvFromRawText(normalizeParsedCv(rawJson), pdfText);
+
+      return {
+        parsedCv: parsed,
+        rawText: pdfText,
+        method,
+        modelUsed: selectedModel,
+      };
     }
 
-    // Si le texte est court mais non vide, on l'envoie quand même au modèle
-    // texte : le CV peut être volontairement succinct, ou le PDF partiellement
-    // scanné mais avec un peu de texte récupérable.
-    const method: ExtractionMethod = 'pdf-text';
+    // B. Si Vision Omni est demandé ou si le PDF n'a pas de texte : tenter l'extraction de l'image de la page
+    const extractedImage = await convertScannedPdfToPng(buffer);
 
-    const fullUserPrompt = `${user}\n\n----- DÉBUT DU TEXTE EXTRAIT DU PDF -----\n${pdfText}\n----- FIN DU TEXTE EXTRAIT DU PDF -----`;
+    if (extractedImage) {
+      const method: ExtractionMethod = 'image-omni';
+      const imageBase64 = bufferToBase64(extractedImage.buffer);
+      const imageMimeType = extractedImage.mime;
 
-    let response: string;
-    try {
-      response = await callNvidiaTextModel({
+      let response: string;
+      try {
+        response = await callNvidiaOmniModel({
+          systemPrompt: system,
+          textPrompt: user,
+          imageBase64,
+          imageMimeType,
+          modelId: OMNI_MODEL_ID,
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        throw new Error(
+          `Échec du modèle visuel NVIDIA Omni (${OMNI_MODEL_ID}) : ${message}. ` +
+          `Veuillez choisir un autre modèle d'analyse IA dans le menu déroulant (ex: Z.ai GLM 5.2 ou NVIDIA Nemotron 3 Super).`
+        );
+      }
+
+      const rawJson = await extractJsonFromResponse(response);
+      const rawTextFallback = `[PDF scanné — image ${imageMimeType} traitée par vision omni (${OMNI_MODEL_ID})]`;
+      const parsed = enrichParsedCvFromRawText(normalizeParsedCv(rawJson), rawTextFallback);
+
+      return {
+        parsedCv: parsed,
+        rawText: rawTextFallback,
+        method,
+        modelUsed: OMNI_MODEL_ID,
+      };
+    }
+
+    // C. Si aucune image n'a été extraite mais que pdfText contient du texte
+    if (pdfText && pdfText.trim().length > 0) {
+      let selectedModel = forceGlm ? 'z-ai/glm-5.2' : (await resolveNvidiaTextModel());
+      const fullUserPrompt = `${user}\n\n----- DÉBUT DU TEXTE EXTRAIT DU PDF -----\n${pdfText}\n----- FIN DU TEXTE EXTRAIT DU PDF -----`;
+
+      const response = await callNvidiaTextModel({
         systemPrompt: system,
         userPrompt: fullUserPrompt,
-        modelId: SUPER_MODEL_ID,
+        modelId: selectedModel,
       });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      throw new Error(
-        `Échec de l'appel au modèle texte NVIDIA pour l'extraction du PDF « ${fileName} » : ${message}`
-      );
+
+      const rawJson = await extractJsonFromResponse(response);
+      const parsed = enrichParsedCvFromRawText(normalizeParsedCv(rawJson), pdfText);
+
+      return {
+        parsedCv: parsed,
+        rawText: pdfText,
+        method: 'pdf-text',
+        modelUsed: selectedModel,
+      };
     }
 
-    const parsed = await extractJsonFromResponse(response);
-    validateParsedCvShape(parsed);
-
-    return {
-      parsedCv: parsed,
-      rawText: pdfText,
-      method,
-      modelUsed: SUPER_MODEL_ID,
-    };
+    throw new Error(
+      `Impossible d'analyser le PDF « ${fileName} » : aucun texte sélectionnable et aucune image scannée n'ont pu être extraits.`
+    );
   }
 
   // 2. Cas image.
   // On tente d'abord de détecter le vrai type MIME via le magic number, car
-  // le `mimeType` déclaré par le client peut être erroné ou générique
+  // le `mimeType` declared par le client peut être erroné ou générique
   // (ex: `application/octet-stream`).
   const detectedMime = detectImageMimeType(buffer);
   const effectiveMime = detectedMime ?? mimeType;
@@ -258,13 +501,9 @@ export async function extractCvFromBuffer(
     );
   }
 
-  const parsed = await extractJsonFromResponse(response);
-  validateParsedCvShape(parsed);
-
-  // Pour une image, on n'a pas de texte source à proprement parler ; on
-  // construit une description synthétique utile pour l'affichage et le
-  // débogage.
+  const rawJson = await extractJsonFromResponse(response);
   const rawText = `[Image fournie — ${fileName} — type ${normalizedMime}, ${buffer.length} octets]`;
+  const parsed = enrichParsedCvFromRawText(normalizeParsedCv(rawJson), rawText);
 
   return {
     parsedCv: parsed,

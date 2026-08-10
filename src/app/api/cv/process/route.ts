@@ -120,6 +120,7 @@ export async function POST(request: NextRequest) {
   const outputFormatRaw = formData.get('outputFormat')
   const language = (formData.get('language') as string) || undefined
   const templateId = (formData.get('template') as string) || undefined
+  const requestedModel = (formData.get('extractionModel') as string) || (formData.get('model') as string) || undefined
 
   // 2. Valider le fichier.
   if (!file || !(file instanceof File)) {
@@ -181,6 +182,7 @@ export async function POST(request: NextRequest) {
       fileName: file.name,
       mimeType,
       language,
+      requestedModel,
     })
 
     const parsedCv: ParsedCv = extraction.parsedCv
@@ -213,43 +215,51 @@ export async function POST(request: NextRequest) {
     const uniqueName = `${record.id}_${outputFileName}`
     await saveGeneratedFile(generatedBuffer, uniqueName)
 
-    await db.cvRecord.update({
-      where: { id: record.id },
-      data: {
-        outputName: outputFileName,
-        filePath: uniqueName,
-        status: 'scoring',
-      },
-    })
+    const skipScoringRaw = formData.get('skipScoring')
+    const skipScoring = skipScoringRaw === 'true' || skipScoringRaw === '1'
 
-    // 9. Étape 3 — Scoring du CV.
-    const scoringResult = await scoreCv({ parsedCv, language })
-    const score: CvScore = scoringResult.score
+    let score: CvScore | null = null
+    let scoringModel: string | null = null
 
-    await db.cvRecord.update({
-      where: { id: record.id },
-      data: {
-        score: score.overallScore,
-        scoreDetails: JSON.stringify(score),
-        scoringModel: scoringResult.modelUsed,
-        status: 'done',
-        durationMs: Date.now() - startTime,
-      },
-    })
+    if (!skipScoring) {
+      // 9. Étape 3 — Scoring du CV.
+      const scoringResult = await scoreCv({ parsedCv, language })
+      score = scoringResult.score
+      scoringModel = scoringResult.modelUsed
+
+      await db.cvRecord.update({
+        where: { id: record.id },
+        data: {
+          score: score.overallScore,
+          scoreDetails: JSON.stringify(score),
+          scoringModel,
+          status: 'done',
+          durationMs: Date.now() - startTime,
+        },
+      })
+    } else {
+      await db.cvRecord.update({
+        where: { id: record.id },
+        data: {
+          status: 'converted',
+          durationMs: Date.now() - startTime,
+        },
+      })
+    }
 
     // 10. Construire la réponse.
     const result: CvProcessingResult = {
       id: record.id,
-      status: 'done',
+      status: skipScoring ? 'converted' : 'done',
       parsedCv,
-      score,
+      score: score as any,
       outputFormat,
       downloadUrl: `/api/download?file=${encodeURIComponent(uniqueName)}`,
       outputFileName,
       extractedText: extraction.rawText,
       durationMs: Date.now() - startTime,
       extractionModel: extraction.modelUsed,
-      scoringModel: scoringResult.modelUsed,
+      scoringModel: scoringModel || undefined,
     }
 
     return NextResponse.json(result)

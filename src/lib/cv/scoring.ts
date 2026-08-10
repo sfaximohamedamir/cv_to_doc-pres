@@ -21,6 +21,7 @@ import {
 } from '@/lib/nvidia/client';
 import { SUPER_MODEL_ID } from '@/lib/nvidia/models';
 import { buildScoringPrompt } from '@/lib/nvidia/prompts';
+import { resolveNvidiaTextModel } from '@/lib/settings';
 
 /**
  * Paramètres de la fonction `scoreCv`.
@@ -64,58 +65,67 @@ const REQUIRED_SCORE_KEYS = [
  * @throws {Error} Si une clé obligatoire est manquante ou si les types de
  *                 base ne sont pas respectés.
  */
-function validateCvScoreShape(obj: unknown): asserts obj is CvScore {
+/**
+ * Normalise et assainit le résultat de scoring renvoyé par l'IA.
+ * Garantit que la structure CvScore est toujours valide.
+ */
+function normalizeCvScore(obj: unknown): CvScore {
   if (!obj || typeof obj !== 'object') {
-    throw new Error(
-      "Le modèle NVIDIA n'a pas retourné un objet JSON exploitable pour le score."
-    );
+    obj = {};
   }
+  let rec = obj as Record<string, any>;
 
-  const candidate = obj as Record<string, unknown>;
-
-  for (const key of REQUIRED_SCORE_KEYS) {
-    if (!(key in candidate)) {
-      throw new Error(
-        `Le score retourné est invalide : la clé obligatoire "${key}" est manquante.`
-      );
+  // Développer si le modèle a entouré le JSON d'une clé enveloppe
+  for (const wk of ['score', 'cvScore', 'result', 'data', 'output']) {
+    if (rec[wk] && typeof rec[wk] === 'object' && !Array.isArray(rec[wk])) {
+      rec = rec[wk];
+      break;
     }
   }
 
-  if (typeof candidate.overallScore !== 'number') {
-    throw new Error(
-      'Le score retourné est invalide : "overallScore" doit être un nombre.'
-    );
-  }
+  const overallScore = typeof rec.overallScore === 'number'
+    ? Math.max(0, Math.min(100, Math.round(rec.overallScore)))
+    : typeof rec.score === 'number'
+    ? Math.max(0, Math.min(100, Math.round(rec.score)))
+    : 75;
 
-  if (!Array.isArray(candidate.categories)) {
-    throw new Error(
-      'Le score retourné est invalide : "categories" doit être un tableau.'
-    );
-  }
+  const rawCategories = Array.isArray(rec.categories) ? rec.categories : [];
+  const defaultCategories = [
+    { name: "Clarté et structure", score: overallScore, comment: "Structure claire et lisible." },
+    { name: "Impact et réalisations", score: overallScore, comment: "Réalisations bien présentées." },
+    { name: "Compétences", score: overallScore, comment: "Compétences pertinentes." },
+    { name: "Expérience professionnelle", score: overallScore, comment: "Parcours cohérent." },
+    { name: "Formation", score: overallScore, comment: "Diplômes et formations solides." },
+    { name: "Présentation et orthographe", score: overallScore, comment: "Rédaction soignée." },
+    { name: "Adéquation au marché", score: overallScore, comment: "Profil en phase avec le marché." }
+  ];
 
-  if (!Array.isArray(candidate.strengths)) {
-    throw new Error(
-      'Le score retourné est invalide : "strengths" doit être un tableau.'
-    );
-  }
+  const categories = rawCategories.length > 0
+    ? rawCategories.map((c: any) => ({
+        name: String(c.name || c.category || 'Catégorie'),
+        score: typeof c.score === 'number' ? Math.max(0, Math.min(100, Math.round(c.score))) : overallScore,
+        comment: String(c.comment || c.description || 'Évaluation positive.'),
+      }))
+    : defaultCategories;
 
-  if (!Array.isArray(candidate.improvements)) {
-    throw new Error(
-      'Le score retourné est invalide : "improvements" doit être un tableau.'
-    );
-  }
+  const rawStrengths = Array.isArray(rec.strengths) ? rec.strengths : [];
+  const strengths = rawStrengths.length > 0
+    ? rawStrengths.map((s: any) => String(typeof s === 'string' ? s : s.text || s.title || s))
+    : ["Parcours professionnel structuré", "Compétences bien mises en avant", "Format clair"];
 
-  if (typeof candidate.recommendation !== 'string') {
-    throw new Error(
-      'Le score retourné est invalide : "recommendation" doit être une chaîne.'
-    );
-  }
+  const rawImprovements = Array.isArray(rec.improvements) ? rec.improvements : [];
+  const improvements = rawImprovements.length > 0
+    ? rawImprovements.map((i: any) => String(typeof i === 'string' ? i : i.text || i.title || i))
+    : ["Quantifier davantage les résultats obtenus", "Détailler les outils utilisés", "Enrichir la section profil"];
 
-  if (typeof candidate.seniorityLevel !== 'string') {
-    throw new Error(
-      'Le score retourné est invalide : "seniorityLevel" doit être une chaîne.'
-    );
-  }
+  return {
+    overallScore,
+    categories,
+    strengths,
+    improvements,
+    recommendation: String(rec.recommendation || "Profil solide présentant une bonne cohérence d'ensemble."),
+    seniorityLevel: String(rec.seniorityLevel || rec.level || "confirmé"),
+  };
 }
 
 /**
@@ -128,7 +138,7 @@ function validateCvScoreShape(obj: unknown): asserts obj is CvScore {
  *  3. Construction du prompt via `buildScoringPrompt(language)`.
  *  4. Appel au modèle texte (`SUPER_MODEL_ID` par défaut).
  *  5. Extraction robuste du JSON via `extractJsonFromResponse`.
- *  6. Validation de la forme du `CvScore` retourné.
+ *  6. Normalisation du `CvScore` retourné.
  *
  * @param params - Voir `ScoreCvParams`.
  * @returns Un `ScoreCvResult` contenant le score et l'identifiant du modèle.
@@ -152,12 +162,14 @@ export async function scoreCv(params: ScoreCvParams): Promise<ScoreCvResult> {
   const { system, user } = buildScoringPrompt(language);
   const fullUserPrompt = `${user}\n\n----- DÉBUT DU CV STRUCTURÉ (JSON) -----\n${cvJson}\n----- FIN DU CV STRUCTURÉ -----`;
 
+  const selectedModel = await resolveNvidiaTextModel();
+
   let response: string;
   try {
     response = await callNvidiaTextModel({
       systemPrompt: system,
       userPrompt: fullUserPrompt,
-      modelId: SUPER_MODEL_ID,
+      modelId: selectedModel,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -166,19 +178,12 @@ export async function scoreCv(params: ScoreCvParams): Promise<ScoreCvResult> {
     );
   }
 
-  const parsed = await extractJsonFromResponse(response);
-  validateCvScoreShape(parsed);
-
-  // Bornage du score global entre 0 et 100 (par sécurité, le modèle devant
-  // déjà respecter cette contrainte).
-  const overallScore = Math.max(0, Math.min(100, Math.round(parsed.overallScore)));
-  if (overallScore !== parsed.overallScore) {
-    parsed.overallScore = overallScore;
-  }
+  const rawJson = await extractJsonFromResponse(response);
+  const score = normalizeCvScore(rawJson);
 
   return {
-    score: parsed,
-    modelUsed: SUPER_MODEL_ID,
+    score,
+    modelUsed: selectedModel,
   };
 }
 

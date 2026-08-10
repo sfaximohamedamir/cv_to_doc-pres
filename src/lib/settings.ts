@@ -81,6 +81,32 @@ export async function isNvidiaKeyConfigured(): Promise<boolean> {
   return Boolean(dbKey)
 }
 
+/// Clé du paramètre pour le modèle texte NVIDIA sélectionné.
+export const NVIDIA_TEXT_MODEL_SETTING = 'nvidia_text_model'
+
+/**
+ * Récupère le modèle texte NVIDIA sélectionné depuis la base de données.
+ */
+export async function getNvidiaTextModel(): Promise<string | null> {
+  return getSetting(NVIDIA_TEXT_MODEL_SETTING)
+}
+
+/**
+ * Enregistre le modèle texte NVIDIA sélectionné dans la base de données.
+ */
+export async function setNvidiaTextModel(modelId: string): Promise<void> {
+  await setSetting(NVIDIA_TEXT_MODEL_SETTING, modelId, false)
+}
+
+/**
+ * Récupère le modèle texte NVIDIA à utiliser (env OU base de données OU défaut).
+ */
+export async function resolveNvidiaTextModel(): Promise<string> {
+  if (process.env.NVIDIA_TEXT_MODEL) return process.env.NVIDIA_TEXT_MODEL
+  const dbModel = await getNvidiaTextModel()
+  return dbModel || 'z-ai/glm-5.2'
+}
+
 /**
  * Récupère la clé API NVIDIA (env OU base de données).
  * L'env a la priorité pour compatibilité avec les déploiements existants.
