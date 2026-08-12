@@ -30,17 +30,14 @@ function getIntensity(value: number, max: number): number {
   return 4
 }
 
-/// Classes Tailwind pour chaque niveau d'intensité.
+/// Classes Tailwind pour chaque niveau d'intensité (bien visibles et colorées).
 const INTENSITY_CLASSES = [
-  'bg-muted/40 dark:bg-muted/20',
-  'bg-emerald-200 dark:bg-emerald-900/40',
-  'bg-emerald-400 dark:bg-emerald-700/60',
-  'bg-emerald-500 dark:bg-emerald-600/80',
-  'bg-emerald-600 dark:bg-emerald-500',
+  'bg-emerald-500/10 dark:bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/10',
+  'bg-emerald-200 dark:bg-emerald-900/60 hover:bg-emerald-300',
+  'bg-emerald-400 dark:bg-emerald-700/80 hover:bg-emerald-500',
+  'bg-emerald-500 dark:bg-emerald-600 hover:bg-emerald-600',
+  'bg-emerald-600 dark:bg-emerald-500 hover:bg-emerald-700',
 ]
-
-/// Labels des heures affichées (toutes les 3 heures).
-const HOUR_LABELS = [0, 3, 6, 9, 12, 15, 18, 21]
 
 export function ActivityHeatmap({ data, delay = 0 }: ActivityHeatmapProps) {
   // Trouver la valeur maximale pour l'échelle de couleur.
@@ -77,66 +74,67 @@ export function ActivityHeatmap({ data, delay = 0 }: ActivityHeatmapProps) {
               </p>
             </div>
           ) : (
-            <div className="space-y-2">
-              {/* Labels des heures */}
-              <div className="flex gap-[2px] pl-10">
-                {HOUR_LABELS.map((h) => (
-                  <div
-                    key={h}
-                    className="flex-1 text-center text-[10px] text-muted-foreground"
-                    style={{ minWidth: '20px' }}
-                  >
-                    {h}h
-                  </div>
-                ))}
-              </div>
-
-              {/* Grille de la heatmap */}
-              <div className="space-y-[2px]">
-                {data.map((day, dayIdx) => (
-                  <div key={dayIdx} className="flex items-center gap-1">
-                    {/* Label du jour */}
-                    <div className="w-9 flex-shrink-0 text-right text-[10px] font-medium text-muted-foreground">
-                      {day.day}
-                    </div>
-                    {/* Cellules des heures */}
-                    <div className="flex flex-1 gap-[2px]">
-                      {day.hours.map((count, hourIdx) => {
-                        const intensity = getIntensity(count, max)
-                        return (
-                          <motion.div
-                            key={hourIdx}
-                            initial={{ opacity: 0, scale: 0.8 }}
-                            animate={{ opacity: 1, scale: 1 }}
-                            transition={{
-                              duration: 0.2,
-                              delay: delay + 0.1 + dayIdx * 0.02 + hourIdx * 0.005,
-                            }}
-                            className={cn(
-                              'aspect-square rounded-sm transition-all hover:ring-2 hover:ring-emerald-400 hover:ring-offset-1 hover:ring-offset-background',
-                              INTENSITY_CLASSES[intensity]
-                            )}
-                            title={`${day.day} ${hourIdx}h — ${count} CV`}
-                          />
-                        )
-                      })}
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              {/* Légende */}
-              <div className="flex items-center justify-end gap-2 pt-1">
-                <span className="text-[10px] text-muted-foreground">Moins</span>
-                <div className="flex gap-[2px]">
-                  {INTENSITY_CLASSES.map((cls, i) => (
+            <div className="space-y-3 overflow-x-auto pb-1">
+              <div className="min-w-[480px]">
+                {/* Labels des heures (alignés parfaitement sur les 24 colonnes) */}
+                <div className="mb-1 flex gap-1 pl-10">
+                  {Array.from({ length: 24 }).map((_, h) => (
                     <div
-                      key={i}
-                      className={cn('h-3 w-3 rounded-sm', cls)}
-                    />
+                      key={h}
+                      className="flex-1 text-center text-[10px] font-medium text-muted-foreground"
+                    >
+                      {h % 3 === 0 ? `${h}h` : ''}
+                    </div>
                   ))}
                 </div>
-                <span className="text-[10px] text-muted-foreground">Plus</span>
+
+                {/* Grille de la heatmap */}
+                <div className="space-y-1">
+                  {data.map((day, dayIdx) => (
+                    <div key={dayIdx} className="flex items-center gap-1">
+                      {/* Label du jour */}
+                      <div className="w-9 flex-shrink-0 text-right text-[11px] font-medium text-muted-foreground">
+                        {day.day}
+                      </div>
+                      {/* Cellules des 24 heures */}
+                      <div className="flex flex-1 gap-1">
+                        {day.hours.map((count, hourIdx) => {
+                          const intensity = getIntensity(count, max)
+                          return (
+                            <motion.div
+                              key={hourIdx}
+                              initial={{ opacity: 0, scale: 0.8 }}
+                              animate={{ opacity: 1, scale: 1 }}
+                              transition={{
+                                duration: 0.2,
+                                delay: delay + 0.05 + dayIdx * 0.01 + hourIdx * 0.003,
+                              }}
+                              className={cn(
+                                'h-4 flex-1 min-w-0 rounded-sm transition-all hover:ring-2 hover:ring-emerald-400 hover:ring-offset-1 hover:ring-offset-background',
+                                INTENSITY_CLASSES[intensity]
+                              )}
+                              title={`${day.day} ${hourIdx}h00 : ${count} CV traité${count > 1 ? 's' : ''}`}
+                            />
+                          )
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Légende */}
+                <div className="mt-3 flex items-center justify-end gap-2 pr-1">
+                  <span className="text-[10px] text-muted-foreground">Moins</span>
+                  <div className="flex gap-1">
+                    {INTENSITY_CLASSES.map((cls, i) => (
+                      <div
+                        key={i}
+                        className={cn('h-3.5 w-3.5 rounded-sm', cls)}
+                      />
+                    ))}
+                  </div>
+                  <span className="text-[10px] text-muted-foreground">Plus</span>
+                </div>
               </div>
             </div>
           )}

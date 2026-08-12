@@ -140,6 +140,7 @@ export type ProcessingStatus =
   | 'converting'
   | 'scoring'
   | 'done'
+  | 'converted'
   | 'error';
 
 /// Configuration d'un modèle NVIDIA

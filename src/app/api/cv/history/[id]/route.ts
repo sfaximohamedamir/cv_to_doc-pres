@@ -9,6 +9,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import path from 'path'
 import { promises as fs } from 'fs'
 import { db } from '@/lib/db'
+import { getDownloadUrl } from '@/lib/cv/download-helper'
 
 export const runtime = 'nodejs'
 
@@ -58,9 +59,7 @@ export async function GET(
     fileSize: record.fileSize,
     tag: record.tag,
     notes: record.notes,
-    downloadUrl: record.filePath
-      ? `/api/download?file=${encodeURIComponent(record.filePath)}`
-      : null,
+    downloadUrl: getDownloadUrl(record),
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
   })

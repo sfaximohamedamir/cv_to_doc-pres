@@ -44,6 +44,7 @@ export interface UseCvProcessingReturn {
     language?: string
     template?: string
     extractionModel?: string
+    customSkeleton?: File
   }) => Promise<void>
   /// Lance l'étape de scoring après confirmation de l'utilisateur
   confirmScoring: () => Promise<void>
@@ -86,12 +87,14 @@ export function useCvProcessing(): UseCvProcessingReturn {
       language,
       template,
       extractionModel,
+      customSkeleton,
     }: {
       file: File
       outputFormat: OutputFormat
       language?: string
       template?: string
       extractionModel?: string
+      customSkeleton?: File
     }) => {
       setIsProcessing(true)
       setError(null)
@@ -111,6 +114,7 @@ export function useCvProcessing(): UseCvProcessingReturn {
         if (language) formData.append('language', language)
         if (template) formData.append('template', template)
         if (extractionModel) formData.append('extractionModel', extractionModel)
+        if (customSkeleton) formData.append('customSkeleton', customSkeleton)
 
         updateStep('upload', 'done')
         updateStep('extract', 'running')

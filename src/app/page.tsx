@@ -32,6 +32,8 @@ import {
   CheckCircle2,
   FileText,
   Cpu,
+  FileUp,
+  X,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -103,6 +105,7 @@ const PIPELINE_FEATURES = [
 
 export default function Home() {
   const [file, setFile] = useState<File | null>(null)
+  const [customSkeleton, setCustomSkeleton] = useState<File | null>(null)
   const [outputFormat, setOutputFormat] = useState<OutputFormat>('word')
   const [language, setLanguage] = useState<string>('français')
   const [extractionModel, setExtractionModel] = useState<string>('auto')
@@ -162,11 +165,18 @@ export default function Home() {
     toast.info('Traitement en cours…', {
       description: `Analyse de "${file.name}" avec NVIDIA Nemotron`,
     })
-    await processCv({ file, outputFormat, language: lang, template, extractionModel })
+    await processCv({
+      file,
+      outputFormat,
+      language: lang,
+      template,
+      extractionModel,
+      customSkeleton: customSkeleton || undefined,
+    })
     // Rafraîchir l'historique et les stats après le traitement
     refresh()
     refreshStats()
-  }, [file, outputFormat, language, processCv, refresh, refreshStats, template, extractionModel])
+  }, [file, outputFormat, language, processCv, refresh, refreshStats, template, extractionModel, customSkeleton])
 
   const handleReset = useCallback(() => {
     reset()
@@ -270,7 +280,7 @@ export default function Home() {
   return (
     <div className="flex min-h-screen flex-col bg-background">
       <OnboardingGuide />
-      <Header />
+      <Header onHome={handleReset} />
 
       <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-6 sm:px-6 lg:px-8">
         {/* Bannière NVIDIA */}
@@ -376,17 +386,58 @@ export default function Home() {
                     />
                   </div>
 
-                  {/* Template visuel */}
-                  <div className="space-y-2">
-                    <Label className="flex items-center gap-1.5 text-sm font-medium">
-                      <Palette className="h-3.5 w-3.5" />
-                      3. Modèle visuel
-                    </Label>
-                    <TemplateSelector
-                      value={template}
-                      onChange={setTemplate}
-                      disabled={isProcessing}
-                    />
+                  {/* Modèle visuel ou Squelette personnalisé */}
+                  <div className="space-y-3 rounded-lg border border-slate-200 p-4 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <Label className="flex items-center gap-1.5 text-sm font-semibold">
+                        <Palette className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                        3. Style & Squelette du document
+                      </Label>
+                      <label className="cursor-pointer text-xs font-medium text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 dark:hover:text-emerald-300 flex items-center gap-1">
+                        <FileUp className="h-3.5 w-3.5" />
+                        <span>Importer un modèle personnalisé (.docx / .pptx)</span>
+                        <input
+                          type="file"
+                          accept=".docx,.pptx"
+                          className="hidden"
+                          disabled={isProcessing}
+                          onChange={(e) => {
+                            const f = e.target.files?.[0]
+                            if (f) setCustomSkeleton(f)
+                          }}
+                        />
+                      </label>
+                    </div>
+
+                    {customSkeleton ? (
+                      <div className="flex items-center justify-between rounded-md bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                        <div className="flex items-center gap-2 truncate">
+                          <FileText className="h-4 w-4 text-emerald-600 flex-shrink-0" />
+                          <span className="truncate">Squelette personnalisé : <strong>{customSkeleton.name}</strong></span>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setCustomSkeleton(null)}
+                          className="h-6 w-6 p-0 hover:bg-emerald-200/50 dark:hover:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    ) : null}
+
+                    <div className={customSkeleton ? 'opacity-40 pointer-events-none' : ''}>
+                      <TemplateSelector
+                        value={template}
+                        onChange={setTemplate}
+                        disabled={isProcessing || !!customSkeleton}
+                      />
+                      {customSkeleton && (
+                        <p className="mt-1 text-[11px] text-muted-foreground italic">
+                          ℹ️ Le modèle prédéfini est désactivé car vous avez importé un squelette personnalisé.
+                        </p>
+                      )}
+                    </div>
                   </div>
 
                   {/* Langue & Modèle d'analyse IA */}

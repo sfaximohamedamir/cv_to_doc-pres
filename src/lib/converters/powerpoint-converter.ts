@@ -40,6 +40,7 @@ import type {
   Language,
 } from '@/lib/cv/types'
 import { getTemplate, type CvTemplate, type CvTemplateId } from '@/lib/cv/templates'
+import type { ExtractedTemplateStyle } from './template-analyzer'
 
 // =====================================================================
 // Constantes de style
@@ -1272,6 +1273,7 @@ export async function generatePowerPointCv(params: {
   parsedCv: ParsedCv
   score?: number
   templateId?: CvTemplateId
+  templateStyle?: ExtractedTemplateStyle
 }): Promise<Buffer> {
   const { parsedCv, score } = params
 

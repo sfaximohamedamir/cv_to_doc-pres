@@ -116,10 +116,10 @@ function normalizeParsedCv(obj: unknown): ParsedCv {
     rec.fullName ||
     rec.full_name ||
     rec.nom ||
-    'Nom non identifié';
+    '';
 
   const personalInfo = {
-    fullName: String(fullName),
+    fullName: String(fullName) || '',
     email: rawPersonalInfo.email ? String(rawPersonalInfo.email) : undefined,
     phone: rawPersonalInfo.phone ? String(rawPersonalInfo.phone) : undefined,
     location: rawPersonalInfo.location || rawPersonalInfo.address ? String(rawPersonalInfo.location || rawPersonalInfo.address) : undefined,
@@ -140,8 +140,8 @@ function normalizeParsedCv(obj: unknown): ParsedCv {
     [];
   const workExperience = Array.isArray(rawExp)
     ? rawExp.map((item: any) => ({
-        title: String(item.title || item.poste || item.jobTitle || 'Poste non spécifié'),
-        company: String(item.company || item.entreprise || item.employer || 'Entreprise non spécifiée'),
+        title: String(item.title || item.poste || item.jobTitle || ''),
+        company: String(item.company || item.entreprise || item.employer || ''),
         startDate: String(item.startDate || item.start_date || item.debut || item.from || ''),
         endDate: String(item.endDate || item.end_date || item.fin || item.to || 'présent'),
         description: String(item.description || item.missions || item.details || ''),
@@ -159,8 +159,8 @@ function normalizeParsedCv(obj: unknown): ParsedCv {
     [];
   const education = Array.isArray(rawEdu)
     ? rawEdu.map((item: any) => ({
-        degree: String(item.degree || item.diploma || item.diplome || item.title || 'Diplôme non spécifié'),
-        institution: String(item.institution || item.school || item.ecole || item.university || 'Établissement non spécifié'),
+        degree: String(item.degree || item.diploma || item.diplome || item.title || ''),
+        institution: String(item.institution || item.school || item.ecole || item.university || ''),
         startDate: String(item.startDate || item.start_date || item.debut || item.from || ''),
         endDate: String(item.endDate || item.end_date || item.fin || item.to || ''),
         field: item.field || item.domain || item.specialite ? String(item.field || item.domain || item.specialite) : undefined,
@@ -181,7 +181,7 @@ function normalizeParsedCv(obj: unknown): ParsedCv {
           return { name: item };
         }
         return {
-          name: String(item.name || item.skill || item.label || 'Compétence'),
+          name: String(item.name || item.skill || item.label || ''),
           level: item.level || item.niveau ? String(item.level || item.niveau) : undefined,
           category: item.category || item.categorie ? String(item.category || item.categorie) : undefined,
         };
@@ -200,7 +200,7 @@ function normalizeParsedCv(obj: unknown): ParsedCv {
           return { name: item };
         }
         return {
-          name: String(item.name || item.langue || item.language || 'Langue'),
+          name: String(item.name || item.langue || item.language || ''),
           level: item.level || item.niveau ? String(item.level || item.niveau) : undefined,
         };
       })
@@ -210,7 +210,7 @@ function normalizeParsedCv(obj: unknown): ParsedCv {
   const rawProjects = rec.projects || rec.projets || [];
   const projects = Array.isArray(rawProjects)
     ? rawProjects.map((item: any) => ({
-        name: String(item.name || item.nom || 'Projet'),
+        name: String(item.name || item.nom || ''),
         description: item.description ? String(item.description) : undefined,
         url: item.url ? String(item.url) : undefined,
       }))
@@ -219,7 +219,7 @@ function normalizeParsedCv(obj: unknown): ParsedCv {
   const rawCerts = rec.certifications || rec.certifs || [];
   const certifications = Array.isArray(rawCerts)
     ? rawCerts.map((item: any) => ({
-        name: String(item.name || item.title || 'Certification'),
+        name: String(item.name || item.title || ''),
         issuer: item.issuer || item.organism ? String(item.issuer || item.organism) : undefined,
         date: item.date ? String(item.date) : undefined,
       }))
@@ -256,7 +256,7 @@ function enrichParsedCvFromRawText(parsed: ParsedCv, rawText: string): ParsedCv 
     .filter(Boolean);
 
   // 1. Extraction dynamique du nom si manquant ou générique
-  if (!parsed.personalInfo.fullName || parsed.personalInfo.fullName === 'Nom non identifié') {
+  if (!parsed.personalInfo.fullName || parsed.personalInfo.fullName.trim() === '') {
     const firstLine = lines.find(
       (l) =>
         l.length < 60 &&

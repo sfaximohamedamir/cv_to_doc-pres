@@ -38,6 +38,7 @@ import {
 } from 'docx'
 import type { ParsedCv, Skill } from '@/lib/cv/types'
 import { getTemplate, type CvTemplate, type CvTemplateId } from '@/lib/cv/templates'
+import type { ExtractedTemplateStyle } from './template-analyzer'
 
 // =====================================================================
 // Constantes de style
@@ -763,6 +764,7 @@ export async function generateWordCv(params: {
   parsedCv: ParsedCv
   score?: number
   templateId?: CvTemplateId
+  templateStyle?: ExtractedTemplateStyle
 }): Promise<Buffer> {
   const { parsedCv, score } = params
 
@@ -770,13 +772,24 @@ export async function generateWordCv(params: {
   // Les variables `let` au niveau du module sont mises à jour ici afin que
   // toutes les fonctions `build*` utilisent les bonnes valeurs.
   const template: CvTemplate = getTemplate(params.templateId)
-  ACCENT_COLOR = template.accentColor.toLowerCase()
-  SECONDARY_COLOR = template.secondaryColor.toLowerCase()
-  HEADER_BG = template.headerBg.toLowerCase()
-  LINK_COLOR = template.accentColor.toLowerCase()
-  ACCENT_TEXT_COLOR = template.accentTextColor.toUpperCase()
-  SECTION_HAS_BORDER = template.sectionBorder
-  COLORED_HEADER = template.coloredHeader
+  const tStyle = params.templateStyle
+  if (tStyle && tStyle.valid) {
+    ACCENT_COLOR = (tStyle.accentColor || template.accentColor).toLowerCase()
+    SECONDARY_COLOR = (tStyle.secondaryColor || template.secondaryColor).toLowerCase()
+    HEADER_BG = (tStyle.headerBg || template.headerBg).toLowerCase()
+    LINK_COLOR = (tStyle.accentColor || template.accentColor).toLowerCase()
+    ACCENT_TEXT_COLOR = (tStyle.accentTextColor || template.accentTextColor).toUpperCase()
+    SECTION_HAS_BORDER = template.sectionBorder
+    COLORED_HEADER = template.coloredHeader
+  } else {
+    ACCENT_COLOR = template.accentColor.toLowerCase()
+    SECONDARY_COLOR = template.secondaryColor.toLowerCase()
+    HEADER_BG = template.headerBg.toLowerCase()
+    LINK_COLOR = template.accentColor.toLowerCase()
+    ACCENT_TEXT_COLOR = template.accentTextColor.toUpperCase()
+    SECTION_HAS_BORDER = template.sectionBorder
+    COLORED_HEADER = template.coloredHeader
+  }
 
   const labels = getLabels(parsedCv)
 

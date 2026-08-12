@@ -206,14 +206,16 @@ export async function convertScannedPdfToPng(
 }
 
 /**
- * Rendu haute résolution (scale 2.0) de la 1ère page d'un PDF sous forme de buffer PNG
- * via PDF.js + @napi-rs/canvas.
+ * Rendu haute résolution (scale 2.0) de TOUTES les pages d'un PDF sous forme d'image PNG assemblée
+ * via PDF.js + @napi-rs/canvas + Sharp.
  */
 export async function renderPdfPageToPng(
   buffer: Buffer
 ): Promise<{ buffer: Buffer; mime: string } | null> {
   try {
     const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+    const sharpModule = await import('sharp');
+    const sharp = sharpModule.default || sharpModule;
     const napiCanvas = eval('require')('@napi-rs/canvas');
     const createCanvas = napiCanvas.createCanvas;
 
@@ -227,21 +229,61 @@ export async function renderPdfPageToPng(
 
     if (doc.numPages === 0) return null;
 
-    const page = await doc.getPage(1);
-    const viewport = page.getViewport({ scale: 2.0 });
+    const maxPages = Math.min(doc.numPages, 10);
+    const pageBuffers: Array<{ buffer: Buffer; width: number; height: number }> = [];
 
-    const canvas = createCanvas(Math.floor(viewport.width), Math.floor(viewport.height));
-    const ctx = canvas.getContext('2d');
+    let totalHeight = 0;
+    let maxWidth = 0;
 
-    const renderContext = {
-      canvasContext: ctx as any,
-      viewport,
-    };
+    for (let pageNum = 1; pageNum <= maxPages; pageNum++) {
+      const page = await doc.getPage(pageNum);
+      const viewport = page.getViewport({ scale: 2.0 });
 
-    await page.render(renderContext).promise;
-    const pngBuffer = canvas.toBuffer('image/png');
+      const w = Math.floor(viewport.width);
+      const h = Math.floor(viewport.height);
 
-    return { buffer: pngBuffer, mime: 'image/png' };
+      const canvas = createCanvas(w, h);
+      const ctx = canvas.getContext('2d');
+
+      await page.render({ canvasContext: ctx as any, viewport }).promise;
+
+      const pagePng = canvas.toBuffer('image/png');
+      pageBuffers.push({ buffer: pagePng, width: w, height: h });
+
+      totalHeight += h;
+      if (w > maxWidth) maxWidth = w;
+    }
+
+    if (pageBuffers.length === 1) {
+      return { buffer: pageBuffers[0].buffer, mime: 'image/png' };
+    }
+
+    // Stitching vertical de toutes les pages avec Sharp
+    const compositeList = [];
+    let currentTop = 0;
+
+    for (const pageItem of pageBuffers) {
+      compositeList.push({
+        input: pageItem.buffer,
+        top: currentTop,
+        left: 0,
+      });
+      currentTop += pageItem.height;
+    }
+
+    const combinedBuffer = await sharp({
+      create: {
+        width: maxWidth,
+        height: totalHeight,
+        channels: 4,
+        background: { r: 255, g: 255, b: 255, alpha: 1 },
+      },
+    })
+      .composite(compositeList)
+      .png()
+      .toBuffer();
+
+    return { buffer: combinedBuffer, mime: 'image/png' };
   } catch (err) {
     console.error('renderPdfPageToPng error :', err);
     return null;

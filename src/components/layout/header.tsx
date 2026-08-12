@@ -2,12 +2,13 @@
 
 /**
  * En-tête de l'application.
- * Affiche le logo, le titre et un badge indiquant l'état de configuration NVIDIA.
+ * Affiche le logo, le titre, un bouton d'accueil (icône Maison),
+ * et un badge indiquant l'état de configuration NVIDIA.
  * Inclut le bouton Paramètres (⚙️) pour configurer la clé API NVIDIA.
  */
 
 import { useEffect, useState } from 'react'
-import { FileText, Cpu, CheckCircle2, AlertCircle, RefreshCw, Settings } from 'lucide-react'
+import { FileText, Cpu, CheckCircle2, AlertCircle, RefreshCw, Settings, Home } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { ThemeToggle } from '@/components/theme-toggle'
@@ -20,7 +21,11 @@ interface StatusInfo {
   cvCount: number
 }
 
-export function Header() {
+interface HeaderProps {
+  onHome?: () => void
+}
+
+export function Header({ onHome }: HeaderProps = {}) {
   const [status, setStatus] = useState<StatusInfo | null>(null)
   const [loading, setLoading] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -49,11 +54,32 @@ export function Header() {
     fetchStatus()
   }, [])
 
+  const handleHomeClick = () => {
+    if (onHome) {
+      onHome()
+    } else if (typeof window !== 'undefined') {
+      window.location.href = '/'
+    }
+  }
+
   return (
     <>
       <header className="sticky top-0 z-40 w-full border-b border-border/60 bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center gap-3">
+          {/* Logo + Titre cliquable pour retourner à la page d'accueil */}
+          <div
+            className="flex cursor-pointer items-center gap-3 transition-opacity hover:opacity-90"
+            onClick={handleHomeClick}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault()
+                handleHomeClick()
+              }
+            }}
+            title="Retour à la page principale (Accueil)"
+          >
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 text-white shadow-lg shadow-emerald-500/20">
               <FileText className="h-5 w-5" />
             </div>
@@ -68,6 +94,18 @@ export function Header() {
           </div>
 
           <div className="flex items-center gap-2">
+            {/* Bouton Accueil avec icône Maison */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleHomeClick}
+              title="Retour à la page principale (Accueil)"
+              className="gap-1.5 border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-300 dark:hover:bg-emerald-950/40"
+            >
+              <Home className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+              <span className="hidden font-medium sm:inline">Accueil</span>
+            </Button>
+
             {status && (
               <>
                 {/* Badge NVIDIA — cliquable si non configuré */}

@@ -26,6 +26,10 @@ import {
   generatePowerPointCv,
   getPowerPointFileName,
 } from '@/lib/converters/powerpoint-converter'
+import {
+  fillCustomDocxSkeleton,
+  fillCustomPptxSkeleton,
+} from '@/lib/converters/custom-skeleton-engine'
 import { isNvidiaConfiguredAsync } from '@/lib/nvidia/client'
 import type {
   CvProcessingResult,
@@ -121,6 +125,12 @@ export async function POST(request: NextRequest) {
   const language = (formData.get('language') as string) || undefined
   const templateId = (formData.get('template') as string) || undefined
   const requestedModel = (formData.get('extractionModel') as string) || (formData.get('model') as string) || undefined
+  const customSkeletonFile = formData.get('customSkeleton')
+  let customSkeletonBuffer: Buffer | null = null
+  if (customSkeletonFile && customSkeletonFile instanceof File && customSkeletonFile.size > 0) {
+    const arrayBuf = await customSkeletonFile.arrayBuffer()
+    customSkeletonBuffer = Buffer.from(arrayBuf)
+  }
 
   // 2. Valider le fichier.
   if (!file || !(file instanceof File)) {
@@ -203,12 +213,28 @@ export async function POST(request: NextRequest) {
     let outputFileName: string
     const fullName = parsedCv.personalInfo.fullName || 'candidat'
 
-    if (outputFormat === 'word') {
-      generatedBuffer = await generateWordCv({ parsedCv, templateId: templateId as CvTemplateId })
-      outputFileName = getWordFileName(fullName)
+    if (customSkeletonBuffer) {
+      if (outputFormat === 'word') {
+        generatedBuffer = await fillCustomDocxSkeleton({
+          skeletonBuffer: customSkeletonBuffer,
+          parsedCv,
+        })
+        outputFileName = getWordFileName(fullName)
+      } else {
+        generatedBuffer = await fillCustomPptxSkeleton({
+          skeletonBuffer: customSkeletonBuffer,
+          parsedCv,
+        })
+        outputFileName = getPowerPointFileName(fullName)
+      }
     } else {
-      generatedBuffer = await generatePowerPointCv({ parsedCv, templateId: templateId as CvTemplateId })
-      outputFileName = getPowerPointFileName(fullName)
+      if (outputFormat === 'word') {
+        generatedBuffer = await generateWordCv({ parsedCv, templateId: templateId as CvTemplateId })
+        outputFileName = getWordFileName(fullName)
+      } else {
+        generatedBuffer = await generatePowerPointCv({ parsedCv, templateId: templateId as CvTemplateId })
+        outputFileName = getPowerPointFileName(fullName)
+      }
     }
 
     // Éviter les collisions de noms en préfixant avec l'ID.
@@ -230,6 +256,8 @@ export async function POST(request: NextRequest) {
       await db.cvRecord.update({
         where: { id: record.id },
         data: {
+          filePath: uniqueName,
+          outputName: outputFileName,
           score: score.overallScore,
           scoreDetails: JSON.stringify(score),
           scoringModel,
@@ -241,6 +269,8 @@ export async function POST(request: NextRequest) {
       await db.cvRecord.update({
         where: { id: record.id },
         data: {
+          filePath: uniqueName,
+          outputName: outputFileName,
           status: 'converted',
           durationMs: Date.now() - startTime,
         },
@@ -259,7 +289,7 @@ export async function POST(request: NextRequest) {
       extractedText: extraction.rawText,
       durationMs: Date.now() - startTime,
       extractionModel: extraction.modelUsed,
-      scoringModel: scoringModel || undefined,
+      scoringModel: scoringModel || '',
     }
 
     return NextResponse.json(result)

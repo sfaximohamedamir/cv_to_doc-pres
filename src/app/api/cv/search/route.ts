@@ -14,6 +14,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { getDownloadUrl } from '@/lib/cv/download-helper'
 
 export const runtime = 'nodejs'
 
@@ -176,9 +177,7 @@ export async function GET(request: NextRequest) {
           fileSize: r.fileSize,
           errorMessage: r.errorMessage,
           filePath: undefined,
-          downloadUrl: r.filePath
-            ? `/api/download?file=${encodeURIComponent(r.filePath)}`
-            : null,
+          downloadUrl: getDownloadUrl(r),
           createdAt: r.createdAt,
           snippet,
           matchedField,
