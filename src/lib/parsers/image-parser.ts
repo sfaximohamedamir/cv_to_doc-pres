@@ -140,13 +140,13 @@ export function buildDataUrl(buffer: Buffer, mime: string): string {
 export async function convertScannedPdfToPng(
   buffer: Buffer
 ): Promise<{ buffer: Buffer; mime: string } | null> {
-  // 1. D'abord tenter l'extraction binaire directe (ultra rapide)
-  const directScan = extractEmbeddedImageFromPdf(buffer);
-  if (directScan) return directScan;
-
-  // 2. Tenter le rendu complet de la page PDF en canvas PNG via @napi-rs/canvas
+  // 1. Tenter en priorité le rendu complet haute résolution de TOUTES les pages PDF assemblées
   const canvasRender = await renderPdfPageToPng(buffer);
   if (canvasRender) return canvasRender;
+
+  // 2. Si le canvas échoue, tenter l'extraction binaire directe de l'image intégrée
+  const directScan = extractEmbeddedImageFromPdf(buffer);
+  if (directScan) return directScan;
 
   // 3. Sinon, décoder les objets images du PDF avec PDF.js + Sharp
   try {
@@ -206,7 +206,7 @@ export async function convertScannedPdfToPng(
 }
 
 /**
- * Rendu haute résolution (scale 2.0) de TOUTES les pages d'un PDF sous forme d'image PNG assemblée
+ * Rendu haute résolution de TOUTES les pages d'un PDF sous forme d'image PNG assemblée
  * via PDF.js + @napi-rs/canvas + Sharp.
  */
 export async function renderPdfPageToPng(
@@ -216,8 +216,22 @@ export async function renderPdfPageToPng(
     const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
     const sharpModule = await import('sharp');
     const sharp = sharpModule.default || sharpModule;
-    const napiCanvas = eval('require')('@napi-rs/canvas');
-    const createCanvas = napiCanvas.createCanvas;
+
+    let createCanvas: any;
+    try {
+      const napi = await import('@napi-rs/canvas');
+      createCanvas = napi.createCanvas;
+    } catch {
+      try {
+        const napi = require('@napi-rs/canvas');
+        createCanvas = napi.createCanvas;
+      } catch (err) {
+        console.error('Could not load @napi-rs/canvas:', err);
+        return null;
+      }
+    }
+
+    if (!createCanvas) return null;
 
     const data = new Uint8Array(buffer);
     const doc = await pdfjs.getDocument({
@@ -227,9 +241,9 @@ export async function renderPdfPageToPng(
       verbosity: 0,
     }).promise;
 
-    if (doc.numPages === 0) return null;
+    if (!doc.numPages || doc.numPages === 0) return null;
 
-    const maxPages = Math.min(doc.numPages, 10);
+    const maxPages = Math.min(doc.numPages, 6);
     const pageBuffers: Array<{ buffer: Buffer; width: number; height: number }> = [];
 
     let totalHeight = 0;
@@ -237,7 +251,7 @@ export async function renderPdfPageToPng(
 
     for (let pageNum = 1; pageNum <= maxPages; pageNum++) {
       const page = await doc.getPage(pageNum);
-      const viewport = page.getViewport({ scale: 2.0 });
+      const viewport = page.getViewport({ scale: 1.5 });
 
       const w = Math.floor(viewport.width);
       const h = Math.floor(viewport.height);
@@ -289,6 +303,7 @@ export async function renderPdfPageToPng(
     return null;
   }
 }
+
 
 /**
  * Extrait la plus grande image intégrée (JPEG ou PNG) depuis un buffer PDF.
