@@ -134,9 +134,59 @@ export function buildDataUrl(buffer: Buffer, mime: string): string {
 }
 
 /**
- * Convertit n'importe quelle page d'un PDF scanné en une image PNG nette
- * grâce à PDF.js + @napi-rs/canvas / Sharp.
+ * Charge pdfjs-dist en configurant correctement le worker pour les
+ * environnements Node.js standalone (ex: Render, Docker).
+ *
+ * Le problème : dans le bundle standalone de Next.js, l'import ESM relatif
+ * `import('./pdf.worker.mjs')` effectué par pdfjs échoue car Node.js ne
+ * peut pas résoudre le module. On le fixe en indiquant explicitement
+ * l'emplacement du worker via GlobalWorkerOptions.workerSrc.
  */
+let pdfjsWorkerConfigured = false;
+async function loadPdfjs() {
+  const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+
+  if (!pdfjsWorkerConfigured) {
+    try {
+      const fs = await import('fs');
+      const path = await import('path');
+
+      // Chercher le fichier worker dans plusieurs emplacements possibles
+      const candidates = [
+        path.join(process.cwd(), 'node_modules', 'pdfjs-dist', 'legacy', 'build', 'pdf.worker.mjs'),
+        path.join(process.cwd(), '..', 'node_modules', 'pdfjs-dist', 'legacy', 'build', 'pdf.worker.mjs'),
+        path.resolve('node_modules', 'pdfjs-dist', 'legacy', 'build', 'pdf.worker.mjs'),
+      ];
+
+      for (const candidate of candidates) {
+        if (fs.existsSync(candidate)) {
+          const absPath = path.resolve(candidate);
+          pdfjs.GlobalWorkerOptions.workerSrc = `file://${absPath}`;
+          console.log('[PDF] Worker source set to:', pdfjs.GlobalWorkerOptions.workerSrc);
+          pdfjsWorkerConfigured = true;
+          break;
+        }
+      }
+
+      if (!pdfjsWorkerConfigured) {
+        // Dernier recours : require.resolve
+        try {
+          const workerPath = eval('require').resolve('pdfjs-dist/legacy/build/pdf.worker.mjs');
+          pdfjs.GlobalWorkerOptions.workerSrc = `file://${workerPath}`;
+          console.log('[PDF] Worker source set via require.resolve:', pdfjs.GlobalWorkerOptions.workerSrc);
+          pdfjsWorkerConfigured = true;
+        } catch {
+          console.warn('[PDF] Could not resolve pdf.worker.mjs via require.resolve');
+        }
+      }
+    } catch (e) {
+      console.warn('[PDF] Error configuring worker:', e);
+    }
+  }
+
+  return pdfjs;
+}
+
 export async function convertScannedPdfToPng(
   buffer: Buffer
 ): Promise<{ buffer: Buffer; mime: string } | null> {
@@ -160,7 +210,7 @@ export async function convertScannedPdfToPng(
 
   // 3. Décoder les objets images du PDF avec PDF.js + Sharp (extraction XObject asynchrone)
   try {
-    const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+    const pdfjs = await loadPdfjs();
     const sharpModule = await import('sharp');
     const sharp = sharpModule.default || sharpModule;
 
@@ -242,7 +292,7 @@ export async function renderPdfPageToPng(
   buffer: Buffer
 ): Promise<{ buffer: Buffer; mime: string } | null> {
   try {
-    const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+    const pdfjs = await loadPdfjs();
     const sharpModule = await import('sharp');
     const sharp = sharpModule.default || sharpModule;
 
