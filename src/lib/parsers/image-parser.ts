@@ -140,15 +140,25 @@ export function buildDataUrl(buffer: Buffer, mime: string): string {
 export async function convertScannedPdfToPng(
   buffer: Buffer
 ): Promise<{ buffer: Buffer; mime: string } | null> {
+  console.log('[PDF] convertScannedPdfToPng: starting extraction, buffer size =', buffer.length);
+
   // 1. Tenter en priorité le rendu complet haute résolution de TOUTES les pages PDF assemblées
   const canvasRender = await renderPdfPageToPng(buffer);
-  if (canvasRender) return canvasRender;
+  if (canvasRender) {
+    console.log('[PDF] renderPdfPageToPng: success', canvasRender.mime, canvasRender.buffer.length, 'bytes');
+    return canvasRender;
+  }
+  console.log('[PDF] renderPdfPageToPng: returned null, trying direct binary scan...');
 
   // 2. Si le canvas échoue, tenter l'extraction binaire directe de l'image intégrée
   const directScan = extractEmbeddedImageFromPdf(buffer);
-  if (directScan) return directScan;
+  if (directScan) {
+    console.log('[PDF] extractEmbeddedImageFromPdf: success', directScan.mime, directScan.buffer.length, 'bytes');
+    return directScan;
+  }
+  console.log('[PDF] extractEmbeddedImageFromPdf: returned null, trying pdfjs XObject extraction...');
 
-  // 3. Sinon, décoder les objets images du PDF avec PDF.js + Sharp
+  // 3. Décoder les objets images du PDF avec PDF.js + Sharp (extraction XObject asynchrone)
   try {
     const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
     const sharpModule = await import('sharp');
@@ -162,10 +172,14 @@ export async function convertScannedPdfToPng(
       verbosity: 0,
     }).promise;
 
+    console.log('[PDF] pdfjs XObject: doc loaded, numPages =', doc.numPages);
+
     for (let pageNum = 1; pageNum <= Math.min(doc.numPages, 3); pageNum++) {
       const page = await doc.getPage(pageNum);
       const ops = await page.getOperatorList();
-      const objs = page.objs;
+
+      // Attendre que tous les objets image soient résolus
+      await new Promise(resolve => setTimeout(resolve, 100));
 
       for (let j = 0; j < ops.fnArray.length; j++) {
         const fn = ops.fnArray[j];
@@ -175,19 +189,33 @@ export async function convertScannedPdfToPng(
           fn === pdfjs.OPS.paintImageMaskXObject
         ) {
           const imgName = ops.argsArray[j][0];
-          const img = objs.get(imgName);
+
+          // Résolution asynchrone via callback si nécessaire
+          let img: any = null;
+          try {
+            img = await new Promise((resolve) => {
+              const result = (page.objs as any).get(imgName, resolve);
+              if (result !== undefined && result !== null) resolve(result);
+            });
+          } catch {
+            img = null;
+          }
+
+          if (!img) {
+            try { img = (page.objs as any).get(imgName); } catch { /* ignore */ }
+          }
+
+          console.log('[PDF] XObject image:', imgName, img ? `${img.width}x${img.height}` : 'null');
+
           if (img && img.width > 100 && img.height > 100) {
             let channels: 1 | 3 | 4 = 4;
             if (img.kind === pdfjs.ImageKind.RGB_24BPP) channels = 3;
             else if (img.kind === pdfjs.ImageKind.GRAYSCALE_1BPP) channels = 1;
 
             if (img.data && img.data.length === img.width * img.height * channels) {
+              console.log('[PDF] XObject: using raw pixel data', img.width, 'x', img.height, 'channels', channels);
               const pngBuffer = await sharp(Buffer.from(img.data), {
-                raw: {
-                  width: img.width,
-                  height: img.height,
-                  channels,
-                },
+                raw: { width: img.width, height: img.height, channels },
               })
                 .png()
                 .toBuffer();
@@ -198,8 +226,9 @@ export async function convertScannedPdfToPng(
         }
       }
     }
+    console.log('[PDF] pdfjs XObject extraction: no suitable image found');
   } catch (err) {
-    console.error('convertScannedPdfToPng :', err);
+    console.error('[PDF] convertScannedPdfToPng error:', err);
   }
 
   return null;
@@ -218,20 +247,44 @@ export async function renderPdfPageToPng(
     const sharp = sharpModule.default || sharpModule;
 
     let createCanvas: any;
+
+    // Essai 1 : dynamic import ESM (fonctionne dans Next.js standalone si serverExternalPackages)
     try {
       const napi = await import('@napi-rs/canvas');
       createCanvas = napi.createCanvas;
-    } catch {
+      console.log('[PDF] @napi-rs/canvas loaded via ESM import');
+    } catch (e1) {
+      console.warn('[PDF] ESM import @napi-rs/canvas failed:', (e1 as any)?.message);
+    }
+
+    // Essai 2 : require CommonJS
+    if (!createCanvas) {
       try {
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
         const napi = require('@napi-rs/canvas');
         createCanvas = napi.createCanvas;
-      } catch (err) {
-        console.error('Could not load @napi-rs/canvas:', err);
+        console.log('[PDF] @napi-rs/canvas loaded via require()');
+      } catch (e2) {
+        console.warn('[PDF] require @napi-rs/canvas failed:', (e2 as any)?.message);
+      }
+    }
+
+    // Essai 3 : eval('require') pour contourner le bundler
+    if (!createCanvas) {
+      try {
+        const napi = eval('require')('@napi-rs/canvas');
+        createCanvas = napi.createCanvas;
+        console.log('[PDF] @napi-rs/canvas loaded via eval(require)');
+      } catch (e3) {
+        console.error('[PDF] ALL @napi-rs/canvas load attempts failed:', (e3 as any)?.message);
         return null;
       }
     }
 
-    if (!createCanvas) return null;
+    if (!createCanvas) {
+      console.error('[PDF] createCanvas is undefined after all load attempts');
+      return null;
+    }
 
     const data = new Uint8Array(buffer);
     const doc = await pdfjs.getDocument({
@@ -242,6 +295,8 @@ export async function renderPdfPageToPng(
     }).promise;
 
     if (!doc.numPages || doc.numPages === 0) return null;
+
+    console.log('[PDF] renderPdfPageToPng: rendering', doc.numPages, 'pages...');
 
     const maxPages = Math.min(doc.numPages, 6);
     const pageBuffers: Array<{ buffer: Buffer; width: number; height: number }> = [];
@@ -262,6 +317,7 @@ export async function renderPdfPageToPng(
       await page.render({ canvasContext: ctx as any, viewport }).promise;
 
       const pagePng = canvas.toBuffer('image/png');
+      console.log(`[PDF] Page ${pageNum} rendered: ${pagePng.length} bytes`);
       pageBuffers.push({ buffer: pagePng, width: w, height: h });
 
       totalHeight += h;
@@ -297,9 +353,10 @@ export async function renderPdfPageToPng(
       .png()
       .toBuffer();
 
+    console.log('[PDF] renderPdfPageToPng: stitched image', combinedBuffer.length, 'bytes');
     return { buffer: combinedBuffer, mime: 'image/png' };
   } catch (err) {
-    console.error('renderPdfPageToPng error :', err);
+    console.error('[PDF] renderPdfPageToPng error:', err);
     return null;
   }
 }

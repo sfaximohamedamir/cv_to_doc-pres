@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: cv-agent
+    runtime: node
+    buildCommand: apt-get install -y libfontconfig1 libfreetype6 libcairo2 libpango-1.0-0 libpangocairo-1.0-0 libgdk-pixbuf-2.0-0 || true && npm install && npm run build
+    startCommand: npx prisma db push --skip-generate && node .next/standalone/server.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: HOSTNAME
+        value: 0.0.0.0
+      - key: DATABASE_URL
+        sync: false
+      - key: NVIDIA_API_KEY
+        sync: false
