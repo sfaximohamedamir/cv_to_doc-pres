@@ -311,14 +311,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         error: errorMessage,
-        id: record?.id || null,
+        id: record.id,
         code: 'PROCESSING_ERROR',
       },
       { status: 500 }
     )
   }
 }
-
 
 /**
  * GET /api/cv/process — renvoie un court résumé d'utilisation.
