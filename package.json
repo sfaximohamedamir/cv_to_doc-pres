@@ -4,8 +4,9 @@
   "private": true,
   "scripts": {
     "dev": "next dev -p 3002",
-    "build": "next build && cp -r .next/static .next/standalone/.next/ && cp -r public .next/standalone/",
-    "start": "NODE_ENV=production bun .next/standalone/server.js",
+    "build": "next build && npm run postbuild",
+    "postbuild": "cp -r .next/static .next/standalone/.next/ && cp -r public .next/standalone/ && cp -r node_modules/sharp .next/standalone/node_modules/sharp && cp -r node_modules/@napi-rs .next/standalone/node_modules/@napi-rs && cp -r node_modules/pdfjs-dist .next/standalone/node_modules/pdfjs-dist",
+    "start": "NODE_ENV=production node .next/standalone/server.js",
     "lint": "eslint .",
     "db:push": "prisma db push --accept-data-loss",
     "db:generate": "prisma generate",
